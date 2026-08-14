@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local env
+.env.local
+
+# local agent settings — can contain allowlisted commands with the
+# Apps Script /exec URL and API token baked in. Never commit.
+.claude/settings.local.json
