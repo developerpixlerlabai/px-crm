@@ -1,11 +1,17 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
-import { Columns3, Loader2, RefreshCw, Rows3, Table2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { Columns3, Loader2, Mail, RefreshCw, Rows3, Table2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { LeadDetailPanel } from "@/components/lead-detail-panel";
 import { LeadsBoard } from "@/components/leads-board";
+import { MailboxDialog } from "@/components/mailbox-dialog";
+import {
+  MailView,
+  type ThreadDetail,
+  type ThreadSummary,
+} from "@/components/mail-view";
 import {
   DEFAULT_FILTERS,
   LeadFilters,
@@ -16,6 +22,7 @@ import { StatCards } from "@/components/stat-cards";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatClock } from "@/lib/format";
+import type { Mailbox } from "@/lib/google/types";
 import {
   STATUSES,
   priorityOf,
@@ -26,9 +33,27 @@ import {
 
 const PAGE_SIZE = 50;
 
-type View = "list" | "board";
+type View = "list" | "board" | "mail";
 
-export function Dashboard({ initial }: { initial: LeadsResponse }) {
+/** Callback failure codes → something a human can act on. */
+const MAILBOX_ERRORS: Record<string, string> = {
+  cancelled: "You cancelled the Google consent screen.",
+  state: "The security check failed. Start the connect again from this tab.",
+  exchange: "Google rejected the sign-in. Check the OAuth client credentials.",
+  no_refresh_token:
+    "Google issued no refresh token. Remove the app at myaccount.google.com/permissions and reconnect.",
+  store: "Connected to Google, but the token could not be stored. Check Supabase.",
+};
+
+export function Dashboard({
+  initial,
+  mailboxes = [],
+  gmailConfigured = false,
+}: {
+  initial: LeadsResponse;
+  mailboxes?: Mailbox[];
+  gmailConfigured?: boolean;
+}) {
   const [leads, setLeads] = useState<Lead[]>(initial.leads);
   const [fetchedAt, setFetchedAt] = useState(initial.meta.fetchedAt);
 
@@ -41,6 +66,68 @@ export function Dashboard({ initial }: { initial: LeadsResponse }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
   const [refreshing, startRefresh] = useTransition();
+
+  // Mail lives here rather than in <MailView /> so the fetch is triggered by the
+  // tab click. A mount-time fetch inside the view would mean setState from an
+  // effect, which cascades renders.
+  const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
+  const [mailLabels, setMailLabels] = useState<Record<string, string>>({});
+  const [mailLoading, setMailLoading] = useState(false);
+  const [openThread, setOpenThread] = useState<ThreadSummary | null>(null);
+  const [threadDetail, setThreadDetail] = useState<ThreadDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  const loadThreads = useCallback(async () => {
+    setMailLoading(true);
+    try {
+      const res = await fetch("/api/mail/threads", { cache: "no-store" });
+      const body = (await res.json()) as {
+        threads?: ThreadSummary[];
+        labels?: Record<string, string>;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      setThreads(body.threads ?? []);
+      setMailLabels(body.labels ?? {});
+    } catch (err) {
+      setThreads([]);
+      toast.error("Could not load mail", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setMailLoading(false);
+    }
+  }, []);
+
+  const onViewChange = useCallback(
+    (next: View) => {
+      setView(next);
+      // Load once on first visit; the Refresh button handles the rest.
+      if (next === "mail" && threads === null && !mailLoading) void loadThreads();
+    },
+    [loadThreads, mailLoading, threads],
+  );
+
+  const openThreadDetail = useCallback(async (summary: ThreadSummary) => {
+    setOpenThread(summary);
+    setThreadDetail(null);
+    setDetailError(null);
+    setDetailLoading(true);
+    try {
+      const res = await fetch(
+        `/api/mail/threads/${summary.threadId}?mailboxId=${summary.mailboxId}`,
+        { cache: "no-store" },
+      );
+      const body = (await res.json()) as { thread?: ThreadDetail; error?: string };
+      if (!res.ok || !body.thread) throw new Error(body.error ?? `HTTP ${res.status}`);
+      setThreadDetail(body.thread);
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
 
   // Keep the panel bound to the key, not the object, so it re-renders with the
   // updated lead after a save instead of showing a stale snapshot.
@@ -199,18 +286,66 @@ export function Dashboard({ initial }: { initial: LeadsResponse }) {
     });
   }, []);
 
+  // The Gmail callback can only report back through the URL. Read it from
+  // location rather than useSearchParams so this component needs no Suspense
+  // boundary, then strip the params so a reload does not re-toast.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("mailbox_connected");
+    const failed = params.get("mailbox_error");
+    if (!connected && !failed) return;
+
+    if (connected) {
+      toast.success(`Connected ${connected}`);
+    } else if (failed) {
+      toast.error("Could not connect Gmail", {
+        description: MAILBOX_ERRORS[failed] ?? "Something went wrong. Try again.",
+      });
+    }
+
+    params.delete("mailbox_connected");
+    params.delete("mailbox_error");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (query ? `?${query}` : ""),
+    );
+  }, []);
+
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-5 p-4 sm:p-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Intent leads</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {view === "mail" ? "Mail" : "Intent leads"}
+          </h1>
+          {/* The subtitle has to follow the tab: "4 leads … synced 12:11 UTC"
+              above a mailbox described the wrong thing entirely. */}
           <p className="text-muted-foreground text-sm">
-            {leads.length} leads scraped by the Apps Script pipeline · synced{" "}
-            {formatClock(fetchedAt)} UTC
+            {view === "mail" ? (
+              threads === null ? (
+                "Reading your synced labels…"
+              ) : (
+                <>
+                  {threads.length} conversation{threads.length === 1 ? "" : "s"} ·{" "}
+                  {mailboxes.length} account{mailboxes.length === 1 ? "" : "s"} ·
+                  only labelled mail is read
+                </>
+              )
+            ) : (
+              <>
+                {leads.length} leads scraped by the Apps Script pipeline · synced{" "}
+                {formatClock(fetchedAt)} UTC
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Tabs value={view} onValueChange={(v) => setView((v ?? "list") as View)}>
+          <Tabs
+            value={view}
+            onValueChange={(v) => onViewChange((v ?? "list") as View)}
+          >
             <TabsList>
               <TabsTrigger value="list">
                 <Rows3 className="size-4" />
@@ -220,8 +355,14 @@ export function Dashboard({ initial }: { initial: LeadsResponse }) {
                 <Columns3 className="size-4" />
                 Board
               </TabsTrigger>
+              <TabsTrigger value="mail">
+                <Mail className="size-4" />
+                Mail
+              </TabsTrigger>
             </TabsList>
           </Tabs>
+
+          <MailboxDialog initial={mailboxes} configured={gmailConfigured} />
 
           {process.env.NEXT_PUBLIC_SHEET_URL && (
             <Button
@@ -241,53 +382,77 @@ export function Dashboard({ initial }: { initial: LeadsResponse }) {
               Open sheet
             </Button>
           )}
-          <Button onClick={refresh} disabled={refreshing}>
-            {refreshing ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <RefreshCw className="size-4" />
-            )}
-            Refresh
-          </Button>
+          {/* Hidden on the Mail tab: this refreshes LEADS, and the mail list has
+              its own Refresh. Two identical buttons meaning different things is
+              worse than one. */}
+          {view !== "mail" && (
+            <Button onClick={refresh} disabled={refreshing}>
+              {refreshing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              Refresh
+            </Button>
+          )}
         </div>
       </header>
 
-      <StatCards leads={leads} />
-
-      <LeadFilters
-        filters={filters}
-        onChange={onFiltersChange}
-        segments={segments}
-        sources={sources}
-        counts={counts}
-      />
-
-      {view === "list" ? (
-        <div>
-          <LeadsTable
-            leads={page}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSort={onSort}
-            onSelect={(lead) => setSelectedKey(lead.key)}
-            onStatusChange={onStatusChange}
-            pendingKeys={pendingKeys}
-          />
-          <LoadMore
-            shown={page.length}
-            total={filtered.length}
-            onMore={() => setVisible((v) => v + PAGE_SIZE)}
-          />
-        </div>
-      ) : (
-        // No paging here: a column that silently stopped at 50 would read as
-        // "this is everything in Outreach Sent" when it isn't.
-        <LeadsBoard
-          leads={filtered}
-          onSelect={(lead) => setSelectedKey(lead.key)}
-          onStatusChange={onStatusChange}
-          pendingKeys={pendingKeys}
+      {view === "mail" ? (
+        // Mail is scoped by Gmail label, not by lead, so the lead stat cards and
+        // filters do not apply to it.
+        <MailView
+          threads={threads}
+          labels={mailLabels}
+          loading={mailLoading}
+          detail={threadDetail}
+          detailLoading={detailLoading}
+          detailError={detailError}
+          onRefresh={() => void loadThreads()}
+          onOpenThread={(thread) => void openThreadDetail(thread)}
+          onCloseThread={() => setOpenThread(null)}
+          openSummary={openThread}
         />
+      ) : (
+        <>
+          <StatCards leads={leads} />
+
+          <LeadFilters
+            filters={filters}
+            onChange={onFiltersChange}
+            segments={segments}
+            sources={sources}
+            counts={counts}
+          />
+
+          {view === "list" ? (
+            <div>
+              <LeadsTable
+                leads={page}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                onSelect={(lead) => setSelectedKey(lead.key)}
+                onStatusChange={onStatusChange}
+                pendingKeys={pendingKeys}
+              />
+              <LoadMore
+                shown={page.length}
+                total={filtered.length}
+                onMore={() => setVisible((v) => v + PAGE_SIZE)}
+              />
+            </div>
+          ) : (
+            // No paging here: a column that silently stopped at 50 would read as
+            // "this is everything in Outreach Sent" when it isn't.
+            <LeadsBoard
+              leads={filtered}
+              onSelect={(lead) => setSelectedKey(lead.key)}
+              onStatusChange={onStatusChange}
+              pendingKeys={pendingKeys}
+            />
+          )}
+        </>
       )}
 
       <LeadDetailPanel

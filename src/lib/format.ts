@@ -62,6 +62,61 @@ export function formatClock(value: string): string {
   }).format(date);
 }
 
+/**
+ * Gmail's date rule: clock time for today, day+month within this year, numeric
+ * date beyond it.
+ *
+ * Deliberately LOCAL time, unlike everything above. The rest of this file is
+ * pinned to UTC because lead dates are server-rendered and hydrated, so a
+ * visitor-local formatter would mismatch. Mail is fetched client-side and never
+ * server-rendered, so there is no mismatch to avoid — and a mail client showing
+ * UTC timestamps would just be wrong.
+ */
+export function formatMailDate(value: string): string {
+  const date = parseDate(value);
+  if (!date) return "—";
+
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  if (sameDay) {
+    return new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+    }).format(date);
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "numeric",
+    year: "2-digit",
+  }).format(date);
+}
+
+/** Full local timestamp, for a row's title attribute. */
+export function formatMailDateFull(value: string): string {
+  const date = parseDate(value);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 /** "https://news.google.com/rss/articles/..." -> "news.google.com" */
 export function hostOf(url: string): string {
   if (!url) return "";
