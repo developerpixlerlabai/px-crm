@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { Columns3, Loader2, Mail, RefreshCw, Rows3, Table2 } from "lucide-react";
+import { Columns3, Loader2, LogOut, Mail, RefreshCw, Rows3, Table2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { logout } from "@/app/actions/auth";
 import { LeadDetailPanel } from "@/components/lead-detail-panel";
 import { LeadsBoard } from "@/components/leads-board";
 import { MailboxDialog } from "@/components/mailbox-dialog";
@@ -395,6 +396,14 @@ export function Dashboard({
               Refresh
             </Button>
           )}
+
+          {/* A plain form, not an onClick handler: signing out has to clear an
+              httpOnly cookie, which only the server can do. */}
+          <form action={logout}>
+            <Button type="submit" variant="ghost" size="icon" title="Sign out">
+              <LogOut className="size-4" />
+            </Button>
+          </form>
         </div>
       </header>
 
