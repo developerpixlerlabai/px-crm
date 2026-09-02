@@ -1,0 +1,2224 @@
+<title>Outbound OS Teardown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+
+<style>
+/* ===========================================================================
+   Tokens. Light is the base palette; dark redefines tokens only, never
+   components. Neutrals are biased cool on purpose, so the single warm accent
+   (oxblood) is the only warm thing on the page and can carry risk + emphasis.
+   =========================================================================== */
+:root {
+  --ground:      #EEF1F5;
+  --surface:     #FFFFFF;
+  --surface-2:   #F6F8FB;
+  --surface-3:   #E5EAF2;
+  --ink:         #0E1621;
+  --ink-2:       #46526A;
+  --ink-3:       #7B879D;
+  --rule:        #D2D9E4;
+  --rule-soft:   #E3E8F0;
+  --accent:      #9B3324;
+  --accent-2:    #B84B36;
+  --accent-soft: #F7E9E5;
+  --ok:          #2C6B4F;
+  --ok-soft:     #E1EFE8;
+  --warn:        #856110;
+  --warn-soft:   #F5EDD9;
+  --crit:        #9B3324;
+  --crit-soft:   #F7E9E5;
+  --shadow:      0 1px 2px rgba(14,22,33,.05), 0 10px 28px -20px rgba(14,22,33,.35);
+  --focus:       #1E5EA8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #090E15;
+    --surface:     #111823;
+    --surface-2:   #161E2A;
+    --surface-3:   #1E2836;
+    --ink:         #E3EAF4;
+    --ink-2:       #A2AEC2;
+    --ink-3:       #778496;
+    --rule:        #26313F;
+    --rule-soft:   #1B2430;
+    --accent:      #E0705C;
+    --accent-2:    #EE8B78;
+    --accent-soft: #2B1A16;
+    --ok:          #6BBE95;
+    --ok-soft:     #142520;
+    --warn:        #D3A544;
+    --warn-soft:   #262010;
+    --crit:        #E0705C;
+    --crit-soft:   #2B1A16;
+    --shadow:      0 1px 2px rgba(0,0,0,.45), 0 10px 28px -20px rgba(0,0,0,.85);
+    --focus:       #7FB2F0;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:      #090E15;
+  --surface:     #111823;
+  --surface-2:   #161E2A;
+  --surface-3:   #1E2836;
+  --ink:         #E3EAF4;
+  --ink-2:       #A2AEC2;
+  --ink-3:       #778496;
+  --rule:        #26313F;
+  --rule-soft:   #1B2430;
+  --accent:      #E0705C;
+  --accent-2:    #EE8B78;
+  --accent-soft: #2B1A16;
+  --ok:          #6BBE95;
+  --ok-soft:     #142520;
+  --warn:        #D3A544;
+  --warn-soft:   #262010;
+  --crit:        #E0705C;
+  --crit-soft:   #2B1A16;
+  --shadow:      0 1px 2px rgba(0,0,0,.45), 0 10px 28px -20px rgba(0,0,0,.85);
+  --focus:       #7FB2F0;
+}
+
+/* ===========================================================================
+   Base
+   =========================================================================== */
+* { box-sizing: border-box; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  font-size: 16px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px;
+}
+
+h1, h2, h3, h4 {
+  font-family: "IBM Plex Serif", ui-serif, Georgia, serif;
+  text-wrap: balance;
+  line-height: 1.22;
+  letter-spacing: -0.01em;
+}
+
+code, .mono, .eyebrow, .chip, .pill, .metric, .num {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+code {
+  font-size: 0.87em;
+  background: var(--surface-3);
+  padding: 0.1em 0.36em;
+  border-radius: 3px;
+}
+
+/* ===========================================================================
+   Shell
+   =========================================================================== */
+.shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 20px 96px;
+}
+
+@media (min-width: 1060px) {
+  .shell { grid-template-columns: 244px minmax(0, 1fr); gap: 56px; padding: 0 32px 120px; }
+}
+
+/* ---- side rail ---- */
+.rail { display: none; }
+
+@media (min-width: 1060px) {
+  .rail {
+    display: block;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 40px 0 40px;
+    border-right: 1px solid var(--rule-soft);
+    margin-right: -28px;
+  }
+}
+
+.rail-title {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.rail ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.rail a {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 9px;
+  padding: 5px 8px 5px 0;
+  font-size: 13.2px;
+  line-height: 1.35;
+  color: var(--ink-2);
+  text-decoration: none;
+  border-radius: 3px;
+}
+.rail a:hover { color: var(--accent); background: var(--surface-2); }
+.rail a .n {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.rail a:hover .n { color: var(--accent); }
+
+/* ===========================================================================
+   Masthead
+   =========================================================================== */
+.masthead {
+  padding: 68px 0 34px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.masthead .kicker {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 20px;
+}
+
+.masthead h1 {
+  font-size: clamp(2.5rem, 6vw, 3.9rem);
+  font-weight: 700;
+  margin: 0 0 20px;
+  letter-spacing: -0.028em;
+}
+
+.masthead .standfirst {
+  font-family: "IBM Plex Serif", serif;
+  font-size: clamp(1.06rem, 2.1vw, 1.3rem);
+  line-height: 1.52;
+  color: var(--ink-2);
+  max-width: 60ch;
+  margin: 0;
+}
+
+.masthead .standfirst em { color: var(--ink); font-style: italic; }
+
+.meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 34px;
+  padding: 18px 0 0;
+  margin-top: 26px;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.meta-strip div { display: flex; flex-direction: column; gap: 3px; padding: 6px 0; }
+
+.meta-strip dt, .meta-k {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.meta-v { font-size: 13.5px; color: var(--ink); }
+
+/* ===========================================================================
+   Sections
+   =========================================================================== */
+main { padding-top: 0; }
+
+section { padding: 58px 0 0; scroll-margin-top: 24px; }
+
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sec-head .n {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  padding-top: 4px;
+}
+
+.sec-head h2 {
+  font-size: clamp(1.42rem, 2.9vw, 1.86rem);
+  font-weight: 600;
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.ref {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.sec-head .ref { white-space: nowrap; }
+td .ref { display: inline-block; margin-left: 4px; }
+
+section > p, section > ul, section > ol, section > .lede { max-width: 68ch; }
+
+section > p { margin: 0 0 17px; }
+
+.lede {
+  font-family: "IBM Plex Serif", serif;
+  font-size: 1.08rem;
+  line-height: 1.58;
+  color: var(--ink-2);
+  margin: 0 0 24px;
+}
+
+h3 {
+  font-size: 1.13rem;
+  font-weight: 600;
+  margin: 38px 0 12px;
+  color: var(--ink);
+}
+
+h4 {
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 0.94rem;
+  font-weight: 600;
+  margin: 26px 0 9px;
+  color: var(--ink);
+}
+
+section ul, section ol { padding-left: 20px; margin: 0 0 18px; }
+section li { margin-bottom: 8px; }
+section li::marker { color: var(--ink-3); }
+
+strong { font-weight: 600; color: var(--ink); }
+
+/* ===========================================================================
+   Chips + pills
+   =========================================================================== */
+.chip {
+  display: inline-block;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 2.5px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.chip-keep   { background: var(--ok-soft);     color: var(--ok);     }
+.chip-change { background: var(--warn-soft);   color: var(--warn);   }
+.chip-add    { background: var(--accent-soft); color: var(--accent); }
+.chip-cut    { background: var(--surface-3);   color: var(--ink-3);  }
+
+.pill {
+  display: inline-block;
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  color: var(--ink-2);
+  background: var(--surface);
+  white-space: nowrap;
+}
+.pill-built   { border-color: var(--ok);     color: var(--ok);     background: var(--ok-soft);     }
+.pill-partial { border-color: var(--warn);   color: var(--warn);   background: var(--warn-soft);   }
+.pill-none    { border-color: var(--rule);   color: var(--ink-3);  background: var(--surface-2);   }
+
+/* ===========================================================================
+   Callouts
+   =========================================================================== */
+.callout {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  padding: 20px 22px;
+  margin: 26px 0;
+  box-shadow: var(--shadow);
+  max-width: 74ch;
+}
+.callout .callout-k {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 9px;
+}
+.callout p { margin: 0 0 12px; }
+.callout p:last-child { margin-bottom: 0; }
+.callout.is-ok { border-left-color: var(--ok); }
+.callout.is-ok .callout-k { color: var(--ok); }
+.callout.is-warn { border-left-color: var(--warn); }
+.callout.is-warn .callout-k { color: var(--warn); }
+
+/* ===========================================================================
+   Tables
+   =========================================================================== */
+.tw { overflow-x: auto; margin: 22px 0 28px; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 13.6px; }
+
+thead th {
+  text-align: left;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--ink-3);
+  padding: 11px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+tbody td { padding: 11px 14px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; line-height: 1.5; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--surface-2); }
+
+td.num, th.num { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.name { font-weight: 500; }
+
+table.sev tbody td:first-child { border-left: 3px solid transparent; }
+tr.sev-hi  td:first-child { border-left-color: var(--crit) !important; }
+tr.sev-med td:first-child { border-left-color: var(--warn) !important; }
+tr.sev-low td:first-child { border-left-color: var(--ink-3) !important; }
+
+/* ===========================================================================
+   Pipeline diagram
+   =========================================================================== */
+.pipe-wrap { display: grid; grid-template-columns: 1fr; gap: 22px; margin: 26px 0 30px; }
+@media (min-width: 900px) { .pipe-wrap { grid-template-columns: minmax(0,1fr) 268px; gap: 30px; } }
+
+.pipe { display: flex; flex-direction: column; gap: 0; }
+
+.stage {
+  display: grid;
+  grid-template-columns: 34px minmax(0,1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-bottom: 0;
+  position: relative;
+}
+.stage:first-child { border-radius: 4px 4px 0 0; }
+.stage:last-child { border-bottom: 1px solid var(--rule); border-radius: 0 0 4px 4px; }
+
+.stage .sn {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
+.stage .sname { font-weight: 600; font-size: 13.8px; margin-bottom: 2px; }
+.stage .sdesc { font-size: 12.7px; color: var(--ink-2); line-height: 1.45; }
+.stage .pill { margin-top: 2px; }
+
+.stage-group {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 14px 14px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-bottom: 0;
+}
+.stage-group:first-child { border-radius: 4px 4px 0 0; }
+
+.cross {
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 18px;
+  align-self: start;
+}
+.cross h4 { margin: 0 0 12px; font-size: 0.8rem; font-family: "IBM Plex Mono", monospace; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+.cross ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 11px; }
+.cross li { margin: 0; font-size: 12.7px; line-height: 1.45; color: var(--ink-2); }
+.cross li b { display: block; color: var(--ink); font-weight: 600; font-size: 13px; }
+
+/* ===========================================================================
+   Gantt
+   =========================================================================== */
+.gantt { margin: 24px 0 10px; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); overflow: hidden; }
+
+.gantt-scale {
+  display: grid;
+  grid-template-columns: 168px minmax(0,1fr);
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface-2);
+}
+.gantt-scale .sp { padding: 8px 12px; font-family: "IBM Plex Mono", monospace; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.gantt-scale .ticks { display: grid; grid-template-columns: repeat(6, 1fr); }
+.gantt-scale .ticks span {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9.5px;
+  color: var(--ink-3);
+  padding: 8px 0 8px 8px;
+  border-left: 1px solid var(--rule);
+  font-variant-numeric: tabular-nums;
+}
+
+.grow { display: grid; grid-template-columns: 168px minmax(0,1fr); border-bottom: 1px solid var(--rule-soft); }
+.grow:last-child { border-bottom: 0; }
+.grow:hover { background: var(--surface-2); }
+.grow .glabel { padding: 11px 12px; font-size: 12.8px; font-weight: 500; line-height: 1.35; }
+.grow .glabel small { display: block; font-weight: 400; color: var(--ink-3); font-size: 11px; font-family: "IBM Plex Mono", monospace; }
+
+.gtrack { position: relative; padding: 11px 0; min-height: 54px; }
+.gtrack::before {
+  content: ""; position: absolute; inset: 0;
+  background-image: repeating-linear-gradient(to right, var(--rule-soft) 0 1px, transparent 1px calc(100%/6));
+  background-size: calc(100%/6) 100%;
+}
+.bar {
+  position: absolute;
+  height: 13px;
+  border-radius: 2px;
+  left: calc(var(--s) / 30 * 100%);
+  width: calc((var(--e) - var(--s)) / 30 * 100%);
+  min-width: 3px;
+}
+.bar-prd  { top: 12px; background: var(--surface-3); border: 1px solid var(--rule); }
+.bar-real { top: 30px; background: var(--accent); }
+
+.glegend { display: flex; gap: 20px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-2); margin: 0 0 30px; }
+.glegend span { display: inline-flex; align-items: center; gap: 7px; }
+.swatch { width: 20px; height: 10px; border-radius: 2px; display: inline-block; }
+.sw-prd { background: var(--surface-3); border: 1px solid var(--rule); }
+.sw-real { background: var(--accent); }
+
+/* ===========================================================================
+   Formula / code blocks
+   =========================================================================== */
+pre {
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12.4px;
+  line-height: 1.62;
+  color: var(--ink);
+  margin: 18px 0 24px;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+pre .c { color: var(--ink-3); }
+pre .k { color: var(--accent); }
+
+/* ===========================================================================
+   Metric grid
+   =========================================================================== */
+.mgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; margin: 24px 0 28px; }
+.mcell { background: var(--surface); padding: 16px 16px 18px; }
+.mcell .mk { font-family: "IBM Plex Mono", monospace; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); display: block; margin-bottom: 8px; }
+.mcell .mv { font-family: "IBM Plex Mono", monospace; font-size: 1.5rem; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.1; display: block; }
+.mcell .mv.is-accent { color: var(--accent); }
+.mcell .mv small { font-size: 0.5em; font-weight: 500; color: var(--ink-3); letter-spacing: .04em; }
+.mcell .mn { font-size: 11.8px; color: var(--ink-2); display: block; margin-top: 7px; line-height: 1.4; }
+
+/* ===========================================================================
+   Decision list
+   =========================================================================== */
+.decisions { list-style: none; padding: 0; margin: 24px 0 0; display: flex; flex-direction: column; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; max-width: none; }
+.decisions li { background: var(--surface); padding: 16px 18px; margin: 0; display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 14px; }
+.decisions .dn { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--accent); padding-top: 3px; font-variant-numeric: tabular-nums; }
+.decisions .dq { font-weight: 600; font-size: 14px; margin-bottom: 5px; }
+.decisions .da { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.decisions .da b { color: var(--ink); }
+
+/* ===========================================================================
+   Footer
+   =========================================================================== */
+footer {
+  margin-top: 76px;
+  padding-top: 26px;
+  border-top: 2px solid var(--ink);
+  font-size: 12.6px;
+  color: var(--ink-3);
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+footer .mono { font-family: "IBM Plex Mono", monospace; font-size: 11px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+
+<div class="shell">
+
+<nav class="rail" aria-label="Contents">
+  <div class="rail-title">Contents</div>
+  <ol>
+    <li><a href="#s01"><span class="n">01</span><span>The verdict</span></a></li>
+    <li><a href="#s02"><span class="n">02</span><span>What exists today</span></a></li>
+    <li><a href="#s03"><span class="n">03</span><span>Timeline reality check</span></a></li>
+    <li><a href="#s04"><span class="n">04</span><span>The architecture I'd build</span></a></li>
+    <li><a href="#s05"><span class="n">05</span><span>Data model, corrected</span></a></li>
+    <li><a href="#s06"><span class="n">06</span><span>The five hard parts</span></a></li>
+    <li><a href="#s07"><span class="n">07</span><span>Missing from the PRD</span></a></li>
+    <li><a href="#s08"><span class="n">08</span><span>Where I disagree</span></a></li>
+    <li><a href="#s09"><span class="n">09</span><span>Delivery plan</span></a></li>
+    <li><a href="#s10"><span class="n">10</span><span>The MVP cut line</span></a></li>
+    <li><a href="#s11"><span class="n">11</span><span>What it costs to run</span></a></li>
+    <li><a href="#s12"><span class="n">12</span><span>Risk register</span></a></li>
+    <li><a href="#s13"><span class="n">13</span><span>Success targets</span></a></li>
+    <li><a href="#s14"><span class="n">14</span><span>Build vs buy</span></a></li>
+    <li><a href="#s15"><span class="n">15</span><span>Decisions I need</span></a></li>
+    <li><a href="#s16"><span class="n">16</span><span>Start here</span></a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header class="masthead">
+  <div class="kicker">Engineering assessment &middot; PixlerLab</div>
+  <h1>Outbound OS Teardown</h1>
+  <p class="standfirst">
+    The PRD is unusually good &mdash; the instincts are right and most of it should be built.
+    The problem is that it describes a five-layer intelligence system on top of a codebase that is
+    currently <em>a read-only dashboard over a Google Sheet</em>, and it budgets 10&ndash;15 weeks for
+    roughly 20&ndash;24 weeks of work. Here is what I would build, in what order, what I would cut,
+    and the one thing I would do before writing any of it.
+  </p>
+  <div class="meta-strip">
+    <div><span class="meta-k">Source document</span><span class="meta-v">PRD v1.0, 63 sections</span></div>
+    <div><span class="meta-k">Codebase inspected</span><span class="meta-v">sales-crm @ 5533097</span></div>
+    <div><span class="meta-k">Code surface</span><span class="meta-v">~6,300 LOC TypeScript</span></div>
+    <div><span class="meta-k">PRD coverage built</span><span class="meta-v">~12%</span></div>
+    <div><span class="meta-k">Assessment date</span><span class="meta-v">25 August 2026</span></div>
+  </div>
+</header>
+
+<!-- ==================================================================== 01 -->
+<section id="s01">
+  <div class="sec-head">
+    <span class="n">01</span>
+    <h2>The verdict</h2>
+    <span class="ref">whole document</span>
+  </div>
+
+  <p class="lede">
+    Six things matter more than everything else in this assessment. If you read nothing past this
+    section, read these.
+  </p>
+
+  <div class="callout is-ok">
+    <span class="callout-k">Keep &mdash; the PRD's core thesis is correct</span>
+    <p>
+      <strong>Trigger-based outbound, company-as-primary-entity, mandatory dedup, an append-only event
+      log, explainable scores, and revenue as the feedback signal.</strong> These six decisions are the
+      difference between a real system and a scraper with a UI. They are all in the PRD, stated
+      clearly, and none of them should be negotiated away for speed. Sections 2, 4, 8, 26, 31 and 40
+      are the spine of the product.
+    </p>
+  </div>
+
+  <div class="callout is-warn">
+    <span class="callout-k">Change &mdash; the phase order delays value by three months</span>
+    <p>
+      Section 49 builds each layer fully in turn: all of Foundation, then all of Intelligence, then all
+      of Outreach. Under that order nothing is testable against a real prospect until week 8, because
+      an intelligence layer produces no value until outreach and replies flow through it. Section 50's
+      own MVP definition contradicts section 49 &mdash; and section 50 is right. <strong>Build one narrow
+      vertical slice end to end first:</strong> one source, one campaign, rules-only scoring, approval-gated
+      sending, reply capture. That is ~6 weeks and it teaches you more than 8 weeks of layer-building.
+    </p>
+  </div>
+
+  <div class="callout">
+    <span class="callout-k">Add &mdash; the three things the PRD does not mention at all</span>
+    <p>
+      <strong>1. A job runtime.</strong> Ninety percent of this system is background work &mdash; ingest,
+      enrich, score, route, send, poll, classify. The PRD never says what executes it. Next.js route
+      handlers on Vercel have execution limits and no retries; this needs a durable queue with steps
+      and backoff before any pipeline code is written. It is a foundational choice, not an
+      implementation detail.
+    </p>
+    <p>
+      <strong>2. Deliverability as a first-class subsystem.</strong> The PRD spends ~15 sections on
+      scoring and AI and roughly two paragraphs on email infrastructure. Inverted priorities: cold
+      outbound programs die of bounce rates, spam complaints and burned domains far more often than
+      of insufficiently clever lead scoring. Bounce rate above 3% and a complaint rate above 0.1% will
+      end the program regardless of how good the model is.
+    </p>
+    <p>
+      <strong>3. Legal basis for contact.</strong> Scraped addresses sent to EU, UK and Canadian
+      recipients carry real exposure under GDPR, PECR and CASL &mdash; and Shopify storefront scraping
+      yields exactly the role addresses (<code>support@</code>, <code>info@</code>) that generate
+      complaints. This needs a decision, a suppression architecture and a retention policy, not a
+      bullet under Security.
+    </p>
+  </div>
+
+  <div class="callout is-warn">
+    <span class="callout-k">Cut &mdash; the learning engine, for now</span>
+    <p>
+      Section 28 wants the system to detect that one segment outperforms another and propose weight
+      changes. The arithmetic does not support it yet. At PixlerLab's likely deal volume, a "3.4x
+      higher positive reply rate" measured on 40 prospects per arm is indistinguishable from noise.
+      <strong>Instrument everything from day one so the data accrues</strong> &mdash; that part is cheap
+      and mandatory &mdash; but ship the analysis as a human-read report with sample sizes and
+      confidence intervals attached, and gate any recommendation on a minimum n. Automated weight
+      proposals are a month-12 feature, not a phase-5 feature.
+    </p>
+  </div>
+
+  <div class="callout is-warn">
+    <span class="callout-k">Blocker &mdash; the app has no authentication and a live mailbox attached</span>
+    <p>
+      Your own <code>docs/GMAIL-SYNC.md</code> marks Phase 0 as deferred and gates deployment on it.
+      That assessment is correct and it is now the highest-priority item in the build. There is a
+      connected Gmail account whose refresh token the app can decrypt, and no login in front of any of
+      it. On localhost that is fine. On a Vercel URL it publishes the team's mail to anyone who finds
+      the hostname. <strong>Nothing else ships until this does.</strong>
+    </p>
+  </div>
+
+  <div class="callout">
+    <span class="callout-k">The one thing to do first</span>
+    <p>
+      <strong>Run a 100-lead manual pilot in parallel with Phase 0, before any pipeline code exists.</strong>
+      Hand-pick 100 companies in one segment, write the emails by hand, send them from a warmed
+      mailbox, and measure positive replies over two weeks. This costs one person a few days and it
+      tests the only assumption the entire five-month build rests on: <em>that PixlerLab's offer lands
+      with a cold audience at all.</em> If 100 hand-written emails to hand-picked prospects produce
+      fewer than two positive replies, the problem is the offer or the list, and automation will
+      reproduce that failure at scale with excellent dashboards. Full detail in
+      <a href="#s16">section 16</a>.
+    </p>
+  </div>
+</section>
+
+<!-- ==================================================================== 02 -->
+<section id="s02">
+  <div class="sec-head">
+    <span class="n">02</span>
+    <h2>What exists today</h2>
+    <span class="ref">&sect;52 &middot; &sect;62 step 2</span>
+  </div>
+
+  <p class="lede">
+    The PRD asks for this inventory before implementation, so here it is. The honest summary: about
+    12% of the PRD's surface is built, and almost all of it is the Gmail plumbing. There is no lead
+    database. The Google Sheet is still the source of truth.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr>
+          <th>PRD capability</th>
+          <th>State</th>
+          <th>What is actually there</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="name">Auth, RBAC, tenancy <span class="ref">&sect;54</span></td>
+          <td><span class="pill pill-none">none</span></td>
+          <td>No login, no users table, no middleware. Documented as a deploy blocker in <code>GMAIL-SYNC.md</code> Phase 0.</td>
+        </tr>
+        <tr>
+          <td class="name">Lead store <span class="ref">&sect;30</span></td>
+          <td><span class="pill pill-none">sheet only</span></td>
+          <td>Google Sheet, read and written through Apps Script. <code>src/lib/sheets.ts</code>, 176 lines. Six writable columns.</td>
+        </tr>
+        <tr>
+          <td class="name">Canonical company / contact model <span class="ref">&sect;7</span></td>
+          <td><span class="pill pill-none">none</span></td>
+          <td>One flat <code>Lead</code> type, 18 string columns. No company entity, no contact entity, no relations.</td>
+        </tr>
+        <tr>
+          <td class="name">Deduplication <span class="ref">&sect;8</span></td>
+          <td><span class="pill pill-none">none</span></td>
+          <td>A content fingerprint (<code>key</code>, from Source URL) exists to re-find a moved row. That is row identity, not entity resolution.</td>
+        </tr>
+        <tr>
+          <td class="name">Signals / intent <span class="ref">&sect;9 &sect;10</span></td>
+          <td><span class="pill pill-partial">free text</span></td>
+          <td><code>matchedSignals</code> and <code>intent</code> are comma-joined strings on the row. No typed signal, no evidence, no timestamp, no expiry.</td>
+        </tr>
+        <tr>
+          <td class="name">Scoring <span class="ref">&sect;10 &sect;11</span></td>
+          <td><span class="pill pill-partial">scraper-side</span></td>
+          <td>A single opaque <code>score</code> written by the Apps Script scraper. <code>priorityOf()</code> buckets it at 8 / 6. No components, no explanation, no version, no admin weights.</td>
+        </tr>
+        <tr>
+          <td class="name">Campaigns, routing, sequences <span class="ref">&sect;14 &sect;19</span></td>
+          <td><span class="pill pill-none">none</span></td>
+          <td>Nothing. Not modelled.</td>
+        </tr>
+        <tr>
+          <td class="name">Suppression, client protection <span class="ref">&sect;38 &sect;39</span></td>
+          <td><span class="pill pill-none">none</span></td>
+          <td>Nothing. This must exist before the first automated send.</td>
+        </tr>
+        <tr>
+          <td class="name">Outbound email <span class="ref">&sect;18</span></td>
+          <td><span class="pill pill-partial">manual send</span></td>
+          <td><code>POST /api/mail/send</code> sends one Gmail message through a connected mailbox. Scope-checked before the Google call. No sequences, no throttling, no suppression gate.</td>
+        </tr>
+        <tr>
+          <td class="name">Reply capture <span class="ref">&sect;20</span></td>
+          <td><span class="pill pill-partial">live read</span></td>
+          <td>Mail view reads threads live from Gmail within consented labels. No local mirror, no push, no classification. Verified against 15 live threads.</td>
+        </tr>
+        <tr>
+          <td class="name">Reply classification <span class="ref">&sect;20</span></td>
+          <td><span class="pill pill-none">none</span></td>
+          <td>Not started. Listed as slice 1F.</td>
+        </tr>
+        <tr>
+          <td class="name">Pipeline, deals, revenue <span class="ref">&sect;21 &sect;25</span></td>
+          <td><span class="pill pill-none">none</span></td>
+          <td>A 7-value <code>STATUSES</code> string list including <code>Closed Won</code>. No stage model, no value, no owner, no dates, no deal record.</td>
+        </tr>
+        <tr>
+          <td class="name">Analytics <span class="ref">&sect;25 &sect;27</span></td>
+          <td><span class="pill pill-partial">4 tiles</span></td>
+          <td>Open leads, hot &amp; open, untriaged, meetings booked with a reply rate. Computed client-side from the sheet rows.</td>
+        </tr>
+        <tr>
+          <td class="name">Event log / audit <span class="ref">&sect;31 &sect;53 r10</span></td>
+          <td><span class="pill pill-none">none</span></td>
+          <td>Nothing. Needs to land in the foundation phase &mdash; retrofitting an event log is far more expensive than starting with one.</td>
+        </tr>
+        <tr>
+          <td class="name">Job runtime / scheduler</td>
+          <td><span class="pill pill-none">none</span></td>
+          <td>Apps Script's daily 8am trigger is the only scheduled thing in the system. No queue, no retries, no backoff.</td>
+        </tr>
+        <tr>
+          <td class="name">Tests <span class="ref">&sect;53 r6</span></td>
+          <td><span class="pill pill-none">none</span></td>
+          <td>Zero. No test runner installed. Listed as slice 1G, not started.</td>
+        </tr>
+        <tr>
+          <td class="name">Multi-mailbox OAuth + token vault</td>
+          <td><span class="pill pill-built">built</span></td>
+          <td>Full authorization-code flow, refresh rotation, revive-on-reconnect, tokens in Supabase Vault behind two <code>SECURITY DEFINER</code> functions granted to <code>service_role</code> only.</td>
+        </tr>
+        <tr>
+          <td class="name">Per-mailbox consent scope</td>
+          <td><span class="pill pill-built">built</span></td>
+          <td>A mailbox reads nothing until someone picks labels. Union semantics verified against a live account (the multi-label AND trap was found and avoided).</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>The four assets worth building on</h3>
+  <p>
+    Most of the existing code is narrow, but four pieces are genuinely good and should set the pattern
+    for everything that follows rather than being rewritten.
+  </p>
+  <ul>
+    <li>
+      <strong>The Vault + <code>SECURITY DEFINER</code> secret pattern</strong> in
+      <code>0001_mailboxes.sql</code>. Correct on all four counts that matter: <code>plpgsql</code> not
+      <code>sql</code>, <code>search_path = ''</code> with fully-qualified identifiers, granted to
+      <code>service_role</code> only, and explicitly revoked from <code>public</code> / <code>anon</code> /
+      <code>authenticated</code>. <em>Reuse this for the Apify and Instantly API keys</em> instead of
+      env vars, so third-party credentials become rotatable and auditable.
+    </li>
+    <li>
+      <strong>The <code>unwrap()</code> idiom</strong> in <code>sheets.ts</code>, which translates a
+      provider's unhelpful response into an actionable message ("redeploy with Who has access:
+      Anyone"). Every new integration client &mdash; Apify, Instantly, the enrichment provider &mdash;
+      should have exactly this shape. It is the difference between a debuggable pipeline and a
+      mysterious one.
+    </li>
+    <li>
+      <strong>The label-scope consent gate.</strong> A connected mailbox grants an entire account;
+      gating reads behind an explicit label choice is a better privacy posture than most commercial
+      CRMs manage. Keep it, and reuse the same gate for reply ingestion.
+    </li>
+    <li>
+      <strong>The component set.</strong> Twenty-one <code>ui/</code> primitives on Base UI plus
+      Tailwind 4, already themed. The new surfaces &mdash; approval queue, action queue, pipeline,
+      analytics &mdash; should be assembled from these, per PRD rule 2.
+    </li>
+  </ul>
+
+  <h3>One thing to retire deliberately</h3>
+  <p>
+    The <code>Lead</code> type in <code>src/lib/types.ts</code> is sheet-shaped: it carries
+    <code>row</code> and <code>key</code>, and its 18 flat fields mirror spreadsheet columns A&ndash;R.
+    It must not become the core domain type. <strong>Demote it to a source-adapter DTO</strong> &mdash;
+    the thing the Google Sheet ingestion parses into, and nothing more &mdash; before any of the new
+    model is written. If <code>Lead</code> leaks into the company graph, the graph inherits the
+    spreadsheet's shape and section 30's warning ("avoid putting everything into one giant
+    <code>leads</code> table") is lost on day one.
+  </p>
+</section>
+
+<!-- ==================================================================== 03 -->
+<section id="s03">
+  <div class="sec-head">
+    <span class="n">03</span>
+    <h2>Timeline reality check</h2>
+    <span class="ref">&sect;49</span>
+  </div>
+
+  <p class="lede">
+    Section 49 totals 10&ndash;15 weeks across five phases. That estimate would be reasonable if it
+    were being added to a working CRM with a database, auth, a job runner and tests. It is being added
+    to a dashboard over a spreadsheet. Below, the PRD's stated duration against mine, at one senior
+    full-stack engineer.
+  </p>
+
+  <div class="gantt">
+    <div class="gantt-scale">
+      <div class="sp">Phase</div>
+      <div class="ticks">
+        <span>W1</span><span>W6</span><span>W11</span><span>W16</span><span>W21</span><span>W26</span>
+      </div>
+    </div>
+
+    <div class="grow">
+      <div class="glabel">Phase 0 &mdash; Lock the door<small>not in the PRD</small></div>
+      <div class="gtrack">
+        <div class="bar bar-real" style="--s:0; --e:2;"></div>
+      </div>
+    </div>
+    <div class="grow">
+      <div class="glabel">Phase 1 &mdash; Foundation<small>PRD: 1&ndash;2 wks</small></div>
+      <div class="gtrack">
+        <div class="bar bar-prd"  style="--s:0; --e:2;"></div>
+        <div class="bar bar-real" style="--s:2; --e:6;"></div>
+      </div>
+    </div>
+    <div class="grow">
+      <div class="glabel">Phase 2 &mdash; Intelligence<small>PRD: 2&ndash;3 wks</small></div>
+      <div class="gtrack">
+        <div class="bar bar-prd"  style="--s:2; --e:5;"></div>
+        <div class="bar bar-real" style="--s:6; --e:9;"></div>
+      </div>
+    </div>
+    <div class="grow">
+      <div class="glabel">Phase 3 &mdash; Outreach<small>PRD: 2&ndash;3 wks</small></div>
+      <div class="gtrack">
+        <div class="bar bar-prd"  style="--s:5; --e:8;"></div>
+        <div class="bar bar-real" style="--s:9; --e:13;"></div>
+      </div>
+    </div>
+    <div class="grow">
+      <div class="glabel">Phase 4 &mdash; Capture &amp; classify<small>PRD: folded into 3 &amp; 4</small></div>
+      <div class="gtrack">
+        <div class="bar bar-real" style="--s:13; --e:16;"></div>
+      </div>
+    </div>
+    <div class="grow">
+      <div class="glabel">Phase 5 &mdash; Sales OS &amp; revenue<small>PRD: 2&ndash;3 wks</small></div>
+      <div class="gtrack">
+        <div class="bar bar-prd"  style="--s:8; --e:11;"></div>
+        <div class="bar bar-real" style="--s:16; --e:19;"></div>
+      </div>
+    </div>
+    <div class="grow">
+      <div class="glabel">Phase 6 &mdash; Analytics loop<small>PRD: 3&ndash;4 wks</small></div>
+      <div class="gtrack">
+        <div class="bar bar-prd"  style="--s:11; --e:15;"></div>
+        <div class="bar bar-real" style="--s:19; --e:23;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="glegend">
+    <span><i class="swatch sw-prd"></i> PRD &sect;49 estimate</span>
+    <span><i class="swatch sw-real"></i> My estimate, 1 senior full-stack engineer</span>
+    <span class="mono">scale: 30 weeks</span>
+  </div>
+
+  <div class="mgrid">
+    <div class="mcell">
+      <span class="mk">PRD total</span>
+      <span class="mv">10&ndash;15<small> wks</small></span>
+      <span class="mn">Five phases, section 49.</span>
+    </div>
+    <div class="mcell">
+      <span class="mk">My estimate, 1 dev</span>
+      <span class="mv is-accent">20&ndash;24<small> wks</small></span>
+      <span class="mn">Seven phases including auth and reply capture as their own work.</span>
+    </div>
+    <div class="mcell">
+      <span class="mk">My estimate, 2 devs</span>
+      <span class="mv">13&ndash;15<small> wks</small></span>
+      <span class="mn">Split at the ingestion / outreach seam. Does not halve &mdash; the graph is serial.</span>
+    </div>
+    <div class="mcell">
+      <span class="mk">First real email sent</span>
+      <span class="mv is-accent">wk 11</span>
+      <span class="mn">Under the resequenced plan. Week 8 if you accept the thin slice in section 10.</span>
+    </div>
+  </div>
+
+  <h3>Where the PRD's estimate goes wrong</h3>
+  <p>
+    Three specific underestimates account for most of the gap, and none of them are padding.
+  </p>
+  <ul>
+    <li>
+      <strong>Phase 1 at 1&ndash;2 weeks is the largest error.</strong> It contains the unified company
+      model, the unified contact model, lead ingestion, deduplication, source tracking, CRM migration
+      <em>and</em> basic scoring. Identity resolution alone (<a href="#s06">section 6</a>) is a
+      week&mdash;plus of careful work with tests, because getting it wrong silently corrupts every
+      downstream number. Migrating the existing sheet without creating duplicates is another. Realistic:
+      4 weeks, and that assumes auth and the job runtime already exist.
+    </li>
+    <li>
+      <strong>Reply capture is not costed.</strong> The PRD folds it into Phase 3 as "reply ingestion".
+      Doing it properly means a local mirror, Gmail push notifications via Pub/Sub, history cursors,
+      duplicate-webhook handling and thread-to-company attribution. Your own Gmail doc correctly scopes
+      that as its own Phase 2 and notes that most of the reference implementation's bulk exists purely
+      to maintain that mirror. It is 3 weeks, not a bullet.
+    </li>
+    <li>
+      <strong>Nothing is budgeted for the work that has no feature attached.</strong> Auth and RBAC,
+      the job runtime, the event log, the test harness, error tracking, staging, and the API-failure
+      handling that rule 9 requires on every external call. That is 3&ndash;4 weeks in total and it is
+      all real. It is invisible in a feature-shaped phase plan, which is exactly why feature-shaped
+      phase plans run 2x over.
+    </li>
+  </ul>
+
+  <div class="callout is-warn">
+    <span class="callout-k">Read this the right way</span>
+    <p>
+      20&ndash;24 weeks is not an argument against building it. It is an argument for
+      <strong>sequencing so that value arrives at week 8 rather than week 20</strong>, and for being
+      honest about the run-rate before starting rather than at week 12. A five-month build that is
+      planned as five months succeeds; a three-month build that takes five months gets abandoned at
+      month four with the intelligence layer half-finished and no emails ever sent.
+    </p>
+  </div>
+</section>
+
+<!-- ==================================================================== 04 -->
+<section id="s04">
+  <div class="sec-head">
+    <span class="n">04</span>
+    <h2>The architecture I'd build</h2>
+    <span class="ref">&sect;2 &middot; &sect;31 &middot; &sect;34 &middot; &sect;63</span>
+  </div>
+
+  <p class="lede">
+    Thirteen stages in four groups, with six cross-cutting concerns that the PRD's flow diagram
+    leaves implicit. Each stage is a step in a durable job, reads from and writes to Postgres, and
+    emits an event. Nothing calls the next stage directly &mdash; stages subscribe to events, which is
+    what makes the loop in section 63 close without becoming a tangle of direct calls.
+  </p>
+
+  <div class="pipe-wrap">
+    <div class="pipe">
+
+      <div class="stage-group">Acquire &mdash; turn the world into rows</div>
+      <div class="stage">
+        <span class="sn">01</span>
+        <div>
+          <div class="sname">Ingest</div>
+          <div class="sdesc">Source adapters (Apps Script, Apify, CSV, future) POST to one idempotent endpoint. The raw payload is stored immutably and never edited.</div>
+        </div>
+        <span class="pill pill-partial">sheet only</span>
+      </div>
+      <div class="stage">
+        <span class="sn">02</span>
+        <div>
+          <div class="sname">Resolve identity</div>
+          <div class="sdesc">Registrable domain becomes the company key. Fuzzy candidates go to a review queue, never an auto-merge. Merges are reversible pointers.</div>
+        </div>
+        <span class="pill pill-none">none</span>
+      </div>
+      <div class="stage">
+        <span class="sn">03</span>
+        <div>
+          <div class="sname">Enrich</div>
+          <div class="sdesc">Third-party lookups for firmographics and contacts, cached with a TTL and a per-month spend cap. Verification before any address is contactable.</div>
+        </div>
+        <span class="pill pill-none">none</span>
+      </div>
+
+      <div class="stage-group">Understand &mdash; decide who is worth a message</div>
+      <div class="stage">
+        <span class="sn">04</span>
+        <div>
+          <div class="sname">Detect signals</div>
+          <div class="sdesc">Typed rows, not strings. Each carries evidence, a source URL, an observation date and a half-life, so a 6-month-old funding round stops counting.</div>
+        </div>
+        <span class="pill pill-partial">free text</span>
+      </div>
+      <div class="stage">
+        <span class="sn">05</span>
+        <div>
+          <div class="sname">Score</div>
+          <div class="sdesc">Six normalised sub-scores under a versioned weight set. Every run is persisted with its component breakdown, which buys explainability and backtesting at once.</div>
+        </div>
+        <span class="pill pill-partial">opaque</span>
+      </div>
+      <div class="stage">
+        <span class="sn">06</span>
+        <div>
+          <div class="sname">Route</div>
+          <div class="sdesc">Rules select a primary and secondary campaign. Eligibility and suppression are evaluated here, and again immediately before send.</div>
+        </div>
+        <span class="pill pill-none">none</span>
+      </div>
+
+      <div class="stage-group">Act &mdash; say something true</div>
+      <div class="stage">
+        <span class="sn">07</span>
+        <div>
+          <div class="sname">Compose</div>
+          <div class="sdesc">A whitelisted fact pack, not a scrape dump, is the only model input. A validator checks every claim in the draft back against it before a human ever sees it.</div>
+        </div>
+        <span class="pill pill-none">none</span>
+      </div>
+      <div class="stage">
+        <span class="sn">08</span>
+        <div>
+          <div class="sname">Approve</div>
+          <div class="sdesc">A review queue with the fact pack shown beside the draft. New campaigns start here by default; only proven ones earn the automatic path.</div>
+        </div>
+        <span class="pill pill-none">none</span>
+      </div>
+      <div class="stage">
+        <span class="sn">09</span>
+        <div>
+          <div class="sname">Deliver</div>
+          <div class="sdesc">Instantly for cold volume, the connected Gmail mailboxes for one-to-one. Sequence state, throttles and stop conditions live in the CRM, never in the sending tool.</div>
+        </div>
+        <span class="pill pill-partial">manual send</span>
+      </div>
+
+      <div class="stage-group">Learn &mdash; close the loop</div>
+      <div class="stage">
+        <span class="sn">10</span>
+        <div>
+          <div class="sname">Capture</div>
+          <div class="sdesc">Gmail push plus Instantly webhooks, mirrored locally and attributed to a company and a thread. Duplicate deliveries are expected and deduplicated.</div>
+        </div>
+        <span class="pill pill-partial">live read</span>
+      </div>
+      <div class="stage">
+        <span class="sn">11</span>
+        <div>
+          <div class="sname">Classify</div>
+          <div class="sdesc">A cheap model maps each reply to one of thirteen categories and extracts timeline, objection and next action. Classification writes a task, not just a label.</div>
+        </div>
+        <span class="pill pill-none">none</span>
+      </div>
+      <div class="stage">
+        <span class="sn">12</span>
+        <div>
+          <div class="sname">Advance</div>
+          <div class="sdesc">Stages, owners, meetings and proposals. Designed so attribution is a by-product of work the salesperson already does, never a separate data-entry chore.</div>
+        </div>
+        <span class="pill pill-none">none</span>
+      </div>
+      <div class="stage">
+        <span class="sn">13</span>
+        <div>
+          <div class="sname">Attribute</div>
+          <div class="sdesc">Every deal traces back to source, trigger, campaign, offer and message version, because every stage above wrote an event as it happened.</div>
+        </div>
+        <span class="pill pill-none">none</span>
+      </div>
+
+    </div>
+
+    <aside class="cross">
+      <h4>Cross-cutting</h4>
+      <ul>
+        <li><b>Event log</b>Append-only, one row per meaningful thing that happened. Every analytic in sections 25&ndash;27 is a query over it. Retrofitting this later is the single most expensive omission available.</li>
+        <li><b>Job runtime</b>Durable steps with retries and backoff. Every stage above is a step. Without it, rule 9's error handling has nowhere to live.</li>
+        <li><b>Identity &amp; access</b>Supabase Auth plus real RLS policies. Phase 0. Everything else is gated on it.</li>
+        <li><b>Suppression</b>A single evaluator consulted by every send path. If there are two suppression checks, one of them is wrong.</li>
+        <li><b>Observability</b>Per-source run stats (section 56), plus error tracking with alerting. A silent ingestion failure is worse than a loud one.</li>
+        <li><b>Secrets</b>Vault-backed, following the pattern already in <code>0001_mailboxes.sql</code>. Not env vars.</li>
+      </ul>
+    </aside>
+  </div>
+
+  <h3>Stack recommendation</h3>
+  <p>
+    Stay where you are and add four things. The existing stack is a good fit for this and PRD rule 1
+    says not to rewrite what works.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>Concern</th><th>Recommendation</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="name">App &amp; API</td>
+          <td>Next.js 16 + React 19 <span class="chip chip-keep">keep</span></td>
+          <td>Already there, route handlers are fine as the API surface, server components suit a read-heavy CRM.</td>
+        </tr>
+        <tr>
+          <td class="name">Database</td>
+          <td>Supabase Postgres <span class="chip chip-keep">keep</span></td>
+          <td>Already provisioned. One Postgres does the graph, the event log, full-text search and fuzzy matching. Resist adding a second datastore.</td>
+        </tr>
+        <tr>
+          <td class="name">Job runtime</td>
+          <td>Inngest <span class="chip chip-add">add</span></td>
+          <td>Durable steps, automatic retries, fan-out, event-triggered functions, works on Vercel serverless, good local dev. Maps one-to-one onto the thirteen stages. Alternative if you want no new vendor: a <code>jobs</code> table plus <code>pg_cron</code> and a small worker &mdash; cheaper, but you write the retry semantics yourself.</td>
+        </tr>
+        <tr>
+          <td class="name">Validation</td>
+          <td>Zod at every boundary <span class="chip chip-add">add</span></td>
+          <td>Ingestion accepts data from four external systems. Parse, do not trust. This is also how rule 9's "invalid records" case stops being a crash.</td>
+        </tr>
+        <tr>
+          <td class="name">Tests</td>
+          <td>Vitest <span class="chip chip-add">add</span></td>
+          <td>Zero tests today. Dedup, scoring, suppression and sequence stop-conditions are pure functions and are exactly where a silent bug is most expensive.</td>
+        </tr>
+        <tr>
+          <td class="name">AI layer</td>
+          <td>Anthropic SDK, prompts versioned in-repo <span class="chip chip-add">add</span></td>
+          <td>Haiku 4.5 for classification at volume, Sonnet 5 for personalisation. Prompts as files under <code>src/ai/prompts/</code> with a version constant, satisfying rule 8.</td>
+        </tr>
+        <tr>
+          <td class="name">Fuzzy matching</td>
+          <td><code>pg_trgm</code> + Postgres FTS <span class="chip chip-add">add</span></td>
+          <td>Company-name candidate generation and CRM search. No vector database is needed for any requirement in this PRD.</td>
+        </tr>
+        <tr>
+          <td class="name">Errors</td>
+          <td>Sentry or equivalent <span class="chip chip-add">add</span></td>
+          <td>Background pipelines fail invisibly by nature. Section 56's admin counters are not alerting.</td>
+        </tr>
+        <tr>
+          <td class="name">Analytics warehouse</td>
+          <td>None <span class="chip chip-cut">avoid</span></td>
+          <td>At PixlerLab's data volume, Postgres views over the event log answer every question in sections 25&ndash;27. Revisit past tens of millions of events.</td>
+        </tr>
+        <tr>
+          <td class="name">Rules DSL / workflow builder</td>
+          <td>None <span class="chip chip-cut">avoid</span></td>
+          <td>Section 14's routing rules are a dozen predicates. Write them as typed TypeScript with a config table for the tunable numbers. A DSL here is a project inside the project.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ==================================================================== 05 -->
+<section id="s05">
+  <div class="sec-head">
+    <span class="n">05</span>
+    <h2>Data model, corrected</h2>
+    <span class="ref">&sect;7 &middot; &sect;30</span>
+  </div>
+
+  <p class="lede">
+    Section 30's table list is close to right and its warning about one giant <code>leads</code> table
+    is the correct instinct. Six changes matter, and each of them is cheap now and expensive later.
+  </p>
+
+  <h3>The six corrections</h3>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>Change</th><th>Why it matters</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="name">Add <code>source_records</code> &mdash; immutable raw payloads</td>
+          <td>Section 6 says preserve raw source data alongside normalised fields, but section 30 has nowhere to put it. Every ingest writes the untouched payload with an idempotency key and a fetch timestamp. This is what makes re-parsing possible when a normaliser turns out to be wrong &mdash; without re-scraping, and without losing the original.</td>
+        </tr>
+        <tr>
+          <td class="name">Split <code>company_domains</code> out of <code>companies</code></td>
+          <td>A company has an apex domain, a <code>.myshopify.com</code> handle, a redirect origin and often a second brand. One <code>domain</code> column forces a false choice and guarantees duplicates. Many domains, one company, one flagged primary.</td>
+        </tr>
+        <tr>
+          <td class="name">Split <code>contact_emails</code> out of <code>contacts</code></td>
+          <td>Section 7 puts <code>email</code>, <code>email_status</code> and <code>email_confidence</code> on the contact, which cannot hold a person with a role address and a personal address at different verification states. Verification and bounce history belong to the address, not the human.</td>
+        </tr>
+        <tr>
+          <td class="name">Make <code>signals</code> typed and evidence-bearing</td>
+          <td>A signal needs <code>type</code>, <code>strength</code>, <code>evidence</code>, <code>source_url</code>, <code>observed_at</code> and <code>half_life_days</code>. Section 9 lists the categories and section 7 has <code>intent_expiry</code>, but expiry is a cliff where decay is what actually happens: funding matters enormously at 10 days and barely at 120.</td>
+        </tr>
+        <tr>
+          <td class="name">Persist every scoring run in <code>scores</code></td>
+          <td>Not a column on the company. A row per computation with the ruleset version, total, per-component breakdown and the human-readable explanation. Principle 5 is then satisfied by construction, and you can replay a new ruleset over last quarter's data to see what it would have done.</td>
+        </tr>
+        <tr>
+          <td class="name">Separate <code>messages</code> from <code>deliveries</code></td>
+          <td>One composed message can be delivered through Instantly or Gmail, can be retried, and can bounce on one address and land on another. Collapsing content and delivery attempt into one row makes the section 27 funnel unqueryable within a month.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Core tables</h3>
+  <p>
+    Roughly thirty tables in seven groups. This is a superset of section 30 with the corrections
+    above applied.
+  </p>
+
+<pre><code><span class="c">-- identity ------------------------------------------------------------</span>
+source_records      <span class="c">raw payload, immutable, idempotency_key unique</span>
+companies           <span class="c">canonical entity; merged_into_id makes merges reversible</span>
+company_domains     <span class="c">many domains -> one company, is_primary</span>
+contacts            <span class="c">people, decision_maker_score, seniority</span>
+contact_emails      <span class="c">address, verification state, bounce history</span>
+merge_candidates    <span class="c">fuzzy pairs awaiting human review</span>
+
+<span class="c">-- intelligence --------------------------------------------------------</span>
+signals             <span class="c">typed + evidence + observed_at + half_life_days</span>
+technologies        <span class="c">platform, theme, apps, detected_at</span>
+enrichments         <span class="c">provider, payload, cost, fetched_at, ttl</span>
+scores              <span class="c">one row per run: ruleset_version, components, explanation</span>
+scoring_rulesets    <span class="c">versioned weights, admin-editable (§10)</span>
+services            <span class="c">the service catalogue of §5, admin-editable</span>
+
+<span class="c">-- outreach ------------------------------------------------------------</span>
+campaigns           <span class="c">approval_mode: auto | review | manual (§36)</span>
+campaign_rules      <span class="c">routing predicates (§14)</span>
+campaign_members    <span class="c">company/contact enrolment + state</span>
+sequences           <span class="c">steps, delays</span>
+sequence_steps
+messages            <span class="c">composed content + fact_pack + ai_run_id</span>
+deliveries          <span class="c">one attempt: provider, status, timestamps, provider_id</span>
+suppressions        <span class="c">reason, scope, added_at, expires_at</span>
+
+<span class="c">-- conversation --------------------------------------------------------</span>
+threads             <span class="c">provider thread, attributed to company</span>
+inbound_messages    <span class="c">mirrored replies</span>
+replies             <span class="c">classification, extracted timeline/objection/next action</span>
+
+<span class="c">-- pipeline ------------------------------------------------------------</span>
+opportunities       <span class="c">stage, owner, value, next_action, next_action_date</span>
+meetings
+proposals
+deals               <span class="c">closed_value, won/lost, service_sold</span>
+tasks               <span class="c">the daily action queue of §24</span>
+
+<span class="c">-- platform ------------------------------------------------------------</span>
+events              <span class="c">APPEND ONLY. every analytic is a query over this (§31)</span>
+ai_runs             <span class="c">prompt_version, model, input_hash, output, validator, cost</span>
+users / roles       <span class="c">§54</span>
+audit_log           <span class="c">who changed what (§53 r10)</span>
+integration_runs    <span class="c">per-source counters for §56</span>
+</code></pre>
+
+  <div class="callout is-ok">
+    <span class="callout-k">The one table that pays for itself fastest</span>
+    <p>
+      <code>events</code>. It is a day's work to add at the start and a month of archaeology to add at
+      the end. Every number in sections 25, 26 and 27 &mdash; revenue by source, by campaign, by
+      trigger, close rate per segment, revenue per thousand prospects &mdash; is a query over it. Write
+      an event at every stage boundary from the very first ingest, even while the dashboards that read
+      them do not exist yet. Data you did not record in March cannot be analysed in September.
+    </p>
+  </div>
+</section>
+
+<!-- ==================================================================== 06 -->
+<section id="s06">
+  <div class="sec-head">
+    <span class="n">06</span>
+    <h2>The five hard parts</h2>
+    <span class="ref">&sect;8 &middot; &sect;11 &middot; &sect;16 &middot; &sect;33 &middot; &sect;35</span>
+  </div>
+
+  <p class="lede">
+    Everything else in this build is ordinary CRUD. These five will absorb most of the difficulty, and
+    four of them get a single paragraph in the PRD. Each one below gets a concrete design, because
+    "the system must merge these into one company" is a requirement, not a plan.
+  </p>
+
+  <h3>1. Identity resolution</h3>
+  <p>
+    Section 8 says dedup is mandatory and gives one example. It is the highest-risk data engineering
+    in the project, because getting it wrong is <em>silent</em>: nobody notices duplicate companies
+    until the revenue-by-source numbers stop adding up, by which time three months of outreach has
+    double-touched prospects.
+  </p>
+  <p>The real difficulties are not in the example:</p>
+  <ul>
+    <li><strong>Domain forms.</strong> <code>www.</code> prefixes, country subdomains, a Shopify store on <code>brand.myshopify.com</code> that also serves <code>brand.com</code>, marketing sites on a separate domain, parked domains that redirect somewhere else entirely.</li>
+    <li><strong>Agencies with multiple brands</strong> and holding companies with a dozen operating names &mdash; where merging is sometimes right and sometimes destroys a real distinction.</li>
+    <li><strong>Contacts without company domains</strong> &mdash; a founder using a Gmail address, which matches nothing and must not match everything.</li>
+  </ul>
+
+  <h4>The design</h4>
+<pre><code><span class="k">key</span>   = registrable domain via the Public Suffix List   <span class="c">(tldts)</span>
+        lowercase, strip www., follow one redirect hop at ingest
+
+<span class="k">auto</span>  merge ONLY on exact registrable-domain match
+<span class="k">queue</span> everything else into merge_candidates for review
+        candidates from pg_trgm similarity(normalised_name) > 0.45
+        AND same country
+
+<span class="k">undo</span>  source_records immutable + companies.merged_into_id pointer
+        unmerge = null the pointer, nothing is destroyed
+</code></pre>
+  <p>
+    Three rules make this survivable. <strong>Never auto-merge on a name match</strong> &mdash; "Apex
+    Digital" is four different companies. <strong>Make every merge reversible</strong>, because you
+    will get some wrong and an irreversible bad merge means restoring from a backup. <strong>Test it
+    properly</strong>: this is a pure function over strings and it is the single best return on test
+    effort in the codebase.
+  </p>
+  <p>
+    Idempotency is the other half. <code>source_records.idempotency_key = hash(source, natural_id)</code>
+    with a unique constraint means re-running the same Apify actor creates nothing new &mdash; which is
+    exactly what section 55 asks for, implemented as a database constraint rather than as care.
+  </p>
+
+  <h3>2. The score does not compose the way section 11 describes</h3>
+  <p>
+    Section 10 gives a table of additive point values (<code>+35</code>, <code>+45</code>,
+    <code>+40</code>&hellip;) and section 11 defines the final score as Company Fit + Intent + Pain +
+    Service Fit + Timing + Contactability, bounded 0&ndash;100. These two cannot both hold. A company
+    hiring three engineers that raised recently with a large catalog is already at 120 from the section
+    10 table alone, before the other five dimensions are added. Clamping at 100 then destroys the
+    ranking precisely among the best leads, which is the only place ranking matters.
+  </p>
+
+  <h4>The fix</h4>
+<pre><code><span class="c">-- each sub-score normalised into 0..1 by its own rules</span>
+s_fit, s_intent, s_pain, s_service, s_timing, s_reach  <span class="k">in [0,1]</span>
+
+<span class="c">-- weights are admin-editable and must sum to 1 (§10)</span>
+raw   = SUM( w_i * s_i )            <span class="k">-></span> 0..1
+score = round(100 * raw)            <span class="k">-></span> 0..100, and it means something
+
+<span class="c">-- time-sensitive signals decay rather than expiring on a cliff</span>
+strength(t) = strength_0 * 0.5 ^ (t / half_life)
+
+    funding      half_life  60d      <span class="c">fresh capital gets stale fast</span>
+    hiring       half_life  30d      <span class="c">a filled role is not a signal</span>
+    catalog/tech half_life 365d      <span class="c">effectively structural</span>
+</code></pre>
+
+  <p>
+    Keep v1 <strong>entirely deterministic and rule-based</strong>. It is explainable for free
+    (principle 5), it is testable, and an admin can reason about a weight change. The moment to
+    consider anything learned is when there are enough outcomes to fit against, which is section 8's
+    problem and is a year away.
+  </p>
+
+  <div class="callout">
+    <span class="callout-k">Where this should eventually go</span>
+    <p>
+      A 0&ndash;100 score answers "how good is this lead" but the question a salesperson actually has
+      is "what should I do first". Those differ whenever deal sizes differ. The right long-run
+      ranking target is expected value &mdash;
+      <code>P(positive reply) &times; P(win | positive) &times; expected deal value</code> &mdash; which
+      correctly prefers a 65-scored enterprise Shopify store over an 80-scored small agency. Build the
+      0&ndash;100 score now, persist every component of it, and you will have the training data to
+      make that switch when the outcomes exist. Do not attempt it in phase 2.
+    </p>
+  </div>
+
+  <h3>3. "Never invent facts" is a mechanism, not a prompt line</h3>
+  <p>
+    Section 35 lists seven things the AI must never do and section 16 adds seven rules it must follow.
+    All fourteen are stated as instructions to the model. Instructions reduce hallucination; they do
+    not prevent it. Since the entire value proposition here is <em>messages grounded in real
+    intelligence</em>, a single invented funding round sent to a real CEO costs more than the system
+    saves that month.
+  </p>
+
+  <h4>Three mechanisms that actually enforce it</h4>
+  <ul>
+    <li>
+      <strong>The fact pack is the only input.</strong> The composer builds a whitelisted JSON object
+      of verified fields, each carrying its <code>source_record_id</code> and <code>observed_at</code>.
+      The model never sees a raw scrape, a page dump or an unverified enrichment. If a fact is not in
+      the pack, the model has no way to know it &mdash; which converts "do not invent" from a request
+      into a property of the input.
+    </li>
+    <li>
+      <strong>A validator runs after generation.</strong> Extract every numeral, proper noun and
+      technology name from the draft; each must appear in the fact pack or on a small stoplist of
+      generic terms. A miss means one regeneration, then the draft routes to a human with the
+      offending span highlighted. This is perhaps 150 lines and it is the difference between a
+      guardrail and a hope.
+    </li>
+    <li>
+      <strong>Every generation is recorded.</strong> <code>ai_runs</code> stores the prompt version,
+      model, fact pack, output, validator verdict and token cost. When a prospect replies "we never
+      raised a Series A", you can see exactly what the system believed and where it came from.
+    </li>
+  </ul>
+  <p>
+    Two of section 35's items are not model behaviour at all and should not be left to the model:
+    <em>ignore unsubscribe requests</em> and <em>send high-risk messages without approval</em> are
+    enforced by the suppression evaluator and the approval mode on the campaign. A prompt cannot fail
+    to send an email.
+  </p>
+
+  <h3>4. The Instantly boundary &mdash; where principle 3 will actually break</h3>
+  <p>
+    Principle 3 says one lead, one source of truth, and names Instantly as a system that must not
+    become a second database. But Instantly <em>is</em> a database: it holds its own lists, its own
+    sequence state, its own unsubscribe list and its own reply detection. If both systems can decide
+    who gets contacted, they will disagree within weeks, and the failure mode is double-touching a
+    prospect who already replied &mdash; the most expensive mistake in outbound.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Concern</th><th>Owner</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="name">Audience selection</td><td>CRM</td><td>Routing decides membership. Nobody edits an Instantly list by hand, ever.</td></tr>
+        <tr><td class="name">Suppression</td><td>CRM</td><td>One evaluator, consulted at enrolment and again immediately before push. Instantly's own list is a backstop, not the authority.</td></tr>
+        <tr><td class="name">Sequence state</td><td>CRM</td><td>Which step, when the next one is due, and every stop condition in section 19.</td></tr>
+        <tr><td class="name">Message content</td><td>CRM</td><td>Composed and approved locally, pushed as a rendered body. No templating in Instantly.</td></tr>
+        <tr><td class="name">Sending &amp; deliverability</td><td>Instantly</td><td>Mailbox rotation, warm-up, throttling, domain health. This is what you are paying for.</td></tr>
+        <tr><td class="name">Delivery events</td><td>Instantly &rarr; CRM</td><td>Webhooks for sent, delivered, bounced, replied, unsubscribed. Each writes an event; a reducer updates state.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    Expect duplicate webhooks and out-of-order delivery, and make the reducer idempotent from the
+    start &mdash; section 55 asks for exactly this and it is much easier to build in than to add.
+  </p>
+  <p>
+    <strong>The alternative worth considering:</strong> you already have working multi-mailbox Gmail
+    OAuth with send. For volumes under roughly 500 emails a week, sending through your own warmed
+    mailboxes and dropping Instantly entirely removes this whole class of problem and one vendor. The
+    trade is that you then own warm-up, rotation and domain reputation yourself &mdash; which is a real
+    job. My recommendation is to keep Instantly for cold volume on dedicated domains and use the
+    Gmail path for one-to-one high-value outreach and all replies. But it is a genuine decision and it
+    should be made deliberately in phase 3, not by default.
+  </p>
+
+  <h3>5. Inverting the Google Sheet</h3>
+  <p>
+    Today the sheet is the source of truth: Apps Script appends to it daily and the dashboard reads
+    and writes six columns. Section 33 wants the CRM to become primary "long-term", which is the right
+    destination and a vague plan. Cutting over badly means either losing edits or running two
+    divergent copies of the lead list.
+  </p>
+<pre><code><span class="k">step 1</span>  Apps Script keeps appending AND posts to /api/ingest/google-intent
+        one-time backfill of existing rows through the same idempotent path
+        CRM is populated; sheet is still authoritative      <span class="c">~1 week</span>
+
+<span class="k">step 2</span>  dashboard reads from the CRM; writes go to the CRM
+        CRM writes a nightly read-only mirror back to the sheet
+        anyone still living in the spreadsheet sees current data  <span class="c">~2 weeks</span>
+
+<span class="k">step 3</span>  Apps Script stops appending, becomes a pure producer
+        sheet is a nightly export and nothing more
+        CRM is canonical                                    <span class="c">cutover</span>
+</code></pre>
+  <p>
+    The mirror in step 2 is what makes this safe: it costs half a day and it removes every argument
+    about cutting over, because nobody loses the view they are used to. Keep it running for a month
+    after the cut, then delete it.
+  </p>
+</section>
+
+<!-- ==================================================================== 07 -->
+<section id="s07">
+  <div class="sec-head">
+    <span class="n">07</span>
+    <h2>Missing from the PRD</h2>
+    <span class="ref">gaps</span>
+  </div>
+
+  <p class="lede">
+    Eight things that need to exist and are either absent or reduced to a bullet. Roughly a third of
+    the build, and none of it is visible in a feature-shaped phase plan &mdash; which is why the
+    section 49 estimate is short.
+  </p>
+
+  <div class="tw">
+    <table class="sev">
+      <thead><tr><th>Gap</th><th>PRD status</th><th>What is actually needed</th><th class="num">Est.</th></tr></thead>
+      <tbody>
+        <tr class="sev-hi">
+          <td class="name">Authentication &amp; RBAC</td>
+          <td>One bullet in &sect;54</td>
+          <td>Supabase Auth, session middleware, a <code>users</code> table, real RLS policies, and role separation between admin and salesperson &mdash; section 10 lets admins edit scoring weights, which is not a salesperson's privilege. Hard blocker on deployment today.</td>
+          <td class="num">1.5 wk</td>
+        </tr>
+        <tr class="sev-hi">
+          <td class="name">Job runtime</td>
+          <td>Absent</td>
+          <td>Durable queue, scheduling, retries with backoff, concurrency limits, dead-letter handling. Every stage in section 4 runs on it. Rule 9's retry requirement has no home without it.</td>
+          <td class="num">1 wk</td>
+        </tr>
+        <tr class="sev-hi">
+          <td class="name">Deliverability</td>
+          <td>&sect;18 lists providers only</td>
+          <td>SPF, DKIM and DMARC per sending domain; a volume ramp schedule; bounce and complaint monitoring with automatic pausing; list hygiene rules; mailbox rotation limits; a hard daily cap per domain. Section 57's KPI list does not include bounce or complaint rate, which are the two numbers that decide whether the program survives.</td>
+          <td class="num">1 wk + ongoing</td>
+        </tr>
+        <tr class="sev-hi">
+          <td class="name">Legal basis &amp; compliance</td>
+          <td>Absent</td>
+          <td>A decision on whether EU, UK and Canadian prospects are in scope, and if so a documented legitimate-interest assessment, a data-retention policy, a working erasure path, a physical postal address and a genuine unsubscribe in every message. Scraped role addresses from storefronts are the highest-complaint segment you have.</td>
+          <td class="num">3&ndash;5 d + counsel</td>
+        </tr>
+        <tr class="sev-med">
+          <td class="name">Enrichment strategy &amp; cost</td>
+          <td>&sect;7 assumes contacts exist</td>
+          <td>Something must find the CTO's name and address. Apollo, Dropcontact or Hunter for discovery; ZeroBounce or NeverBounce for verification. Both are per-record costs with real monthly totals, plus caching, TTLs and a spend cap. Section 6 never says where a contact comes from.</td>
+          <td class="num">1 wk</td>
+        </tr>
+        <tr class="sev-med">
+          <td class="name">Testing &amp; CI</td>
+          <td>Rule 6, no mechanism</td>
+          <td>Vitest, a test database, and CI on push. Non-negotiable coverage: domain normalisation, merge decisions, score computation, suppression evaluation, sequence stop conditions, reply-category mapping.</td>
+          <td class="num">4 d + inline</td>
+        </tr>
+        <tr class="sev-med">
+          <td class="name">Signal decay</td>
+          <td>&sect;7 has <code>intent_expiry</code></td>
+          <td>Expiry is a cliff; decay is what actually happens. Without it, a lead scored 85 in March still shows 85 in July on the strength of a funding round nobody remembers, and the hot list slowly fills with stale companies.</td>
+          <td class="num">1 d</td>
+        </tr>
+        <tr class="sev-low">
+          <td class="name">Who operates it</td>
+          <td>Implied, never stated</td>
+          <td>Section 24 produces a daily action queue for a salesperson. Sections 8 and 36 require a human to clear merge candidates and approve drafts. If that person does not exist and the work lands on a founder between client calls, the queue silently stops being worked and the system degrades into a very expensive lead list.</td>
+          <td class="num">a decision</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout is-warn">
+    <span class="callout-k">On the two email numbers that are missing from &sect;57</span>
+    <p>
+      Section 57 tracks delivery rate, positive reply rate and meeting rate. It should also track
+      <strong>hard bounce rate</strong> and <strong>spam complaint rate</strong>, with automatic
+      pausing thresholds, because these are the only two metrics in the system that can end the
+      program outright. Sustained bounces above 3% or complaints above 0.1% get sending domains
+      throttled by the major receivers, and reputation recovery takes months. Every other KPI in
+      section 57 measures how well the program is doing; these two measure whether it still exists.
+    </p>
+  </div>
+</section>
+
+<!-- ==================================================================== 08 -->
+<section id="s08">
+  <div class="sec-head">
+    <span class="n">08</span>
+    <h2>Where I disagree</h2>
+    <span class="ref">&sect;28 &middot; &sect;45 &middot; &sect;46 &middot; &sect;48 &middot; &sect;49</span>
+  </div>
+
+  <p class="lede">
+    Five judgements in the PRD I would change, with what I would do instead. Everything not listed
+    here I agree with, which is most of the document.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>PRD position</th><th>Verdict</th><th>What I would do instead</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="name">&sect;49 &mdash; build each layer fully before the next</td>
+          <td><span class="chip chip-change">change</span></td>
+          <td>Cut a thin vertical slice through all layers first. Section 50's own MVP definition already describes this; section 49 contradicts it. The intelligence layer cannot be validated without replies flowing back through it, and a scoring model nobody has tested against a real prospect is a guess with a dashboard.</td>
+        </tr>
+        <tr>
+          <td class="name">&sect;28 &mdash; AI recommends scoring weight changes from outcome data</td>
+          <td><span class="chip chip-cut">defer</span></td>
+          <td>Instrument everything now; ship the analysis as a human-read report with sample size and a confidence interval next to every comparison, and suppress any recommendation below a minimum n. At a few hundred sends and a handful of wins per segment, "3.4x higher" is noise, and a system that confidently acts on noise is worse than one that stays quiet. Revisit at roughly 30 outcomes per arm.</td>
+        </tr>
+        <tr>
+          <td class="name">&sect;46 &mdash; natural-language interface as a headline capability</td>
+          <td><span class="chip chip-cut">defer</span></td>
+          <td>A saved-segment builder with two dozen prebuilt filters answers every example in section 45 &mdash; large Shopify stores in the US, funded and hiring, agencies contacted 30+ days ago with no reply &mdash; in a fraction of the effort, deterministically, with no chance of a wrong answer stated confidently. If you still want NL later, add schema-constrained SQL generation over a curated read-only view. Not a differentiator; a convenience.</td>
+        </tr>
+        <tr>
+          <td class="name">&sect;48 &mdash; connect pipeline to delivery capacity</td>
+          <td><span class="chip chip-cut">cut</span></td>
+          <td>Genuinely useful and completely dependent on a pipeline that has enough volume to plan against. Until there are consistent monthly wins, capacity planning is a spreadsheet a founder does in ten minutes. Revisit in year two.</td>
+        </tr>
+        <tr>
+          <td class="name">&sect;34 &mdash; seven AI agents in the pipeline</td>
+          <td><span class="chip chip-change">change</span></td>
+          <td>The decomposition is right, the coverage is not. Running seven model calls over every discovered company costs roughly $1,125 a month against about $12 for the gated version (<a href="#s11">worked through in section 11</a>) &mdash; a ninety-fold difference for no additional revenue. Deterministic rules run on 100% of leads; models run only on the slice you will actually contact. Agents 1 and 2 (lead and intent analysis) are rules, not models &mdash; and rules are cheaper, faster, explainable and testable. Keep models for agents 4, 5 and 6, where language is the actual work.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>What I strongly agree with</h3>
+  <p>
+    Worth stating explicitly, because these are the parts that most PRDs get wrong and this one does
+    not:
+  </p>
+  <ul>
+    <li><strong>Principle 1, intent over volume.</strong> The failure mode of every outbound system is optimising for list size. Naming this as principle one is the single best decision in the document.</li>
+    <li><strong>Principle 5, explainability, and the requirement in &sect;12 to label pain as a hypothesis.</strong> A system that says "possible performance issue, based on a 25,000-product catalog on a customised Prestige theme" is honest and useful. One that says "your site is slow" without having measured it is a liability &mdash; and section 35 correctly forbids it.</li>
+    <li><strong>&sect;36 defaulting new campaigns to Review mode.</strong> Correct, and it should be enforced by the schema rather than by convention.</li>
+    <li><strong>&sect;29 lead-quality feedback from salespeople.</strong> Cheap to build, and the most valuable training data the system will ever have. Build it in phase 2 even though nothing consumes it until much later.</li>
+    <li><strong>&sect;53 rule 1, do not rewrite the existing application.</strong> Correct, and the Gmail and Vault work is worth keeping.</li>
+    <li><strong>&sect;43 opportunity memory.</strong> Cheap &mdash; a structured note plus a reactivation date on the company &mdash; and "their agency contract ended" is genuinely the highest-conversion moment in outbound. Build the simple version early.</li>
+  </ul>
+</section>
+
+<!-- ==================================================================== 09 -->
+<section id="s09">
+  <div class="sec-head">
+    <span class="n">09</span>
+    <h2>Delivery plan</h2>
+    <span class="ref">replaces &sect;49</span>
+  </div>
+
+  <p class="lede">
+    Seven phases. Each has an exit gate that is a demonstrable behaviour, not a checklist &mdash; if
+    the gate does not pass, the next phase does not start. Durations assume one senior full-stack
+    engineer.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Phase</th><th class="num">Wks</th><th>Scope</th><th>Exit gate</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="name">0 &mdash; Lock the door</td>
+          <td class="num">2</td>
+          <td>Supabase Auth, middleware, users and roles, real RLS policies on <code>connected_mailboxes</code>, Inngest wired, <code>events</code> table, Vitest + CI, Sentry.</td>
+          <td>Logged out, <code>/</code> redirects and <code>/api/leads</code> returns nothing. Logged in, the dashboard is unchanged. A test job retries on failure and lands in the dead-letter queue. <code>tsc --noEmit</code> and lint clean.</td>
+        </tr>
+        <tr>
+          <td class="name">1 &mdash; The graph</td>
+          <td class="num">4</td>
+          <td>Ingestion endpoint with idempotency, <code>source_records</code>, companies and domains, contacts and emails, identity resolution with a review queue, Apps Script dual-write, full backfill of the existing sheet.</td>
+          <td>The same Apify run imported twice creates zero new companies. A company discovered by both Google and Apify appears once, with two signals and both source records intact. Every existing sheet row is present in the CRM.</td>
+        </tr>
+        <tr>
+          <td class="name">2 &mdash; Intelligence</td>
+          <td class="num">3</td>
+          <td>Typed signals with evidence and decay, the six-component score with versioned admin-editable weights, service catalogue, campaign routing rules, suppression evaluator, client protection, lead-quality feedback.</td>
+          <td>Any lead's score opens into a per-component breakdown citing the evidence behind each. Changing a weight in settings re-ranks the list. An existing client cannot be routed into any campaign.</td>
+        </tr>
+        <tr>
+          <td class="name">3 &mdash; Outreach</td>
+          <td class="num">4</td>
+          <td>Fact-pack composer, the claim validator, approval queue, sequence engine with all section 19 stop conditions, Instantly push and webhooks, Gmail one-to-one send, sending caps and throttles.</td>
+          <td>A draft containing a fact absent from the fact pack is blocked before a human sees it. A suppressed contact cannot be sent to through either path. A reply stops the sequence within one cycle.</td>
+        </tr>
+        <tr>
+          <td class="name">4 &mdash; Capture &amp; classify</td>
+          <td class="num">3</td>
+          <td>Gmail push via Pub/Sub, local message mirror, thread-to-company attribution, the thirteen-category classifier with extraction, automatic task creation, the daily action queue.</td>
+          <td>A reply sent to a connected mailbox appears in the CRM within a minute, classified, attributed to the right company, with a task on the right person's queue. Replaying the same webhook changes nothing.</td>
+        </tr>
+        <tr>
+          <td class="name">5 &mdash; Sales OS</td>
+          <td class="num">3</td>
+          <td>Pipeline stages with owners and values, meetings, proposals, deals, the company timeline of section 44, source attribution, the section 51 dashboard.</td>
+          <td>A won deal traces end to end &mdash; source, trigger, campaign, offer, message version, dates &mdash; with no manual data entry beyond marking it won and entering the value.</td>
+        </tr>
+        <tr>
+          <td class="name">6 &mdash; The loop</td>
+          <td class="num">4</td>
+          <td>Campaign and revenue analytics over the event log, segment performance with sample sizes and confidence intervals, the management command centre, saved segments, opportunity memory and reactivation.</td>
+          <td>Revenue by source, campaign, trigger and service are all answerable from the event log without a manual export. Every comparison shown carries its n.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Explicitly out of scope for this plan</h3>
+  <p>
+    Named here so that leaving them out is a decision rather than an oversight: the automated learning
+    engine of section 28 beyond reporting; the natural-language interface of section 46; capacity
+    planning (section 48); LinkedIn as a channel; agency discovery as an automated source (start
+    manual); healthcare as a distinct pipeline (it is a segment, not a system); and any autonomous
+    send mode &mdash; every campaign stays in Review until it has a track record, exactly as section 36
+    requires.
+  </p>
+</section>
+
+<!-- ==================================================================== 10 -->
+<section id="s10">
+  <div class="sec-head">
+    <span class="n">10</span>
+    <h2>The MVP cut line</h2>
+    <span class="ref">&sect;50 &middot; &sect;51</span>
+  </div>
+
+  <p class="lede">
+    Section 50 is right that the whole vision should not be attempted at once, and its loop is the
+    correct loop. But the version below is narrower still: one source, one campaign, one segment. The
+    goal is not a usable CRM at week 8. It is <em>evidence</em>, at week 8, about whether the loop
+    closes at all.
+  </p>
+
+  <div class="mgrid">
+    <div class="mcell"><span class="mk">Sources</span><span class="mv is-accent">1</span><span class="mn">The AI-hiring detector you already have. Not Shopify, not funding, not healthcare.</span></div>
+    <div class="mcell"><span class="mk">Campaigns</span><span class="mv is-accent">1</span><span class="mn">One ICP, one offer, one five-step sequence.</span></div>
+    <div class="mcell"><span class="mk">Model calls per lead</span><span class="mv">1</span><span class="mn">Personalisation only. Scoring and routing stay deterministic.</span></div>
+    <div class="mcell"><span class="mk">Approval mode</span><span class="mv">review</span><span class="mn">Every message read by a human before it sends. No exceptions in the MVP.</span></div>
+  </div>
+
+  <h3>In</h3>
+  <ul>
+    <li>Auth, the job runtime and the event log &mdash; all of phase 0, none of it optional.</li>
+    <li>Ingestion from the one source, with idempotency and domain-based dedup.</li>
+    <li>Companies, domains, contacts, emails, typed signals.</li>
+    <li>A deterministic six-component score with a visible breakdown.</li>
+    <li>One campaign, one sequence, the suppression evaluator, client protection.</li>
+    <li>Fact-pack composition with the validator, and an approval queue.</li>
+    <li>Sending through one path (whichever you choose in <a href="#s15">section 15</a>) with a hard daily cap.</li>
+    <li>Reply capture and classification, with a task landing on someone's queue.</li>
+    <li>Four numbers on a screen: contacted, replied, positive, meetings.</li>
+  </ul>
+
+  <h3>Out</h3>
+  <ul>
+    <li>Every other lead source, including the Shopify and Apify pipeline.</li>
+    <li>Multi-campaign routing, secondary campaigns, campaign analytics.</li>
+    <li>Deals, revenue, attribution, the management dashboard.</li>
+    <li>Merge review UI &mdash; log candidates to a table, look at them in SQL.</li>
+    <li>Admin-editable weights &mdash; a constant in a file is fine at this stage.</li>
+    <li>Enrichment providers &mdash; use whatever contact data the source already yields.</li>
+  </ul>
+
+  <div class="callout is-ok">
+    <span class="callout-k">What week 8 tells you</span>
+    <p>
+      By the end of the MVP you will know three things you cannot know today, and each of them changes
+      what gets built next. <strong>Does the offer land?</strong> &mdash; measured in positive replies,
+      not opens. <strong>Does the score correlate with anything?</strong> &mdash; compare reply rates
+      above and below the threshold; if they are the same, the scoring model is decoration and phase 2
+      needs rethinking, which is enormously valuable to learn at week 8 rather than week 20.
+      <strong>Does anyone work the queue?</strong> &mdash; if tasks pile up unworked, the constraint is
+      staffing, and no further engineering fixes it.
+    </p>
+  </div>
+</section>
+
+<!-- ==================================================================== 11 -->
+<section id="s11">
+  <div class="sec-head">
+    <span class="n">11</span>
+    <h2>What it costs to run</h2>
+    <span class="ref">not in the PRD</span>
+  </div>
+
+  <p class="lede">
+    Monthly run rate at a working volume of roughly 5,000 newly discovered companies and 1,500
+    contacted prospects. The PRD asks for cost per acquisition and ROI in section 57 but never
+    establishes the cost side, so here it is.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Line</th><th class="num">Monthly</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="name">Enrichment (Apollo / Dropcontact)</td><td class="num">$150&ndash;600</td><td>Per-record contact discovery. The largest single line and the one that scales directly with list size.</td></tr>
+        <tr><td class="name">Instantly</td><td class="num">$97&ndash;297</td><td>Sending, warm-up, mailbox rotation.</td></tr>
+        <tr><td class="name">Apify</td><td class="num">$50&ndash;200</td><td>Usage-based, depends on Shopify crawl volume.</td></tr>
+        <tr><td class="name">Email verification</td><td class="num">$30&ndash;100</td><td>Non-negotiable. Cheaper than the reputation damage from skipping it.</td></tr>
+        <tr><td class="name">Sending domains + mailboxes</td><td class="num">$30&ndash;60</td><td>Three secondary domains, three mailboxes each. Never send cold from the primary domain.</td></tr>
+        <tr><td class="name">Supabase Pro</td><td class="num">$25</td><td>Already required for Vault and the daily backups you will want.</td></tr>
+        <tr><td class="name">Vercel Pro</td><td class="num">$20</td><td></td></tr>
+        <tr><td class="name">Inngest</td><td class="num">$0&ndash;50</td><td>Free tier covers early volume comfortably.</td></tr>
+        <tr><td class="name">Sentry</td><td class="num">$0&ndash;26</td><td></td></tr>
+        <tr><td class="name">Claude API</td><td class="num">$15&ndash;70</td><td>Gated as described below. Genuinely a rounding error.</td></tr>
+        <tr><td class="name"><strong>Total</strong></td><td class="num"><strong>$420&ndash;1,450</strong></td><td>Excluding engineering time, which dominates everything above by an order of magnitude.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>The AI bill is not the problem &mdash; unless you build it wrong</h3>
+  <p>
+    This is worth showing explicitly, because the intuition that an AI-heavy system means a large
+    inference bill is wrong here, and the intuition that seven agents per lead is harmless is also
+    wrong. Current pricing: Sonnet 5 at $2 per million input tokens and $10 per million output;
+    Haiku 4.5 at $1 and $5; Opus 5 at $5 and $25.
+  </p>
+
+<pre><code><span class="k">GATED</span>  <span class="c">-- deterministic rules on 100%, models on the slice you contact</span>
+  personalisation   750 leads x (4,000 in + 600 out)   Sonnet 5
+                    = 3.0M in + 0.45M out              = $6.00 + $4.50
+  reply classify    400 replies x (1,500 in + 300 out) Haiku 4.5
+                    = 0.6M in + 0.12M out              = $0.60 + $0.60
+                                                       <span class="k">TOTAL ~$12 / month</span>
+
+<span class="k">UNGATED</span>  <span class="c">-- all seven §34 agents over every discovered company</span>
+  7 calls x 5,000 companies x ~5,000 tokens in         Opus 5
+                    = 175M in + ~10M out               = $875 + $250
+                                                       <span class="k">TOTAL ~$1,125 / month</span>
+</code></pre>
+
+  <p>
+    Roughly a ninety-fold difference for no additional revenue, since the six thousand companies you
+    were never going to contact do not care how carefully they were analysed. Three rules keep it in
+    the first column: <strong>run rules on everything and models only on what you will actually
+    send</strong>; <strong>use Haiku for classification and Sonnet for composition</strong>, reserving
+    Opus for cases where quality genuinely decides revenue; and <strong>cache by fact-pack hash</strong>,
+    so re-approving an unchanged draft costs nothing.
+  </p>
+
+  <div class="callout">
+    <span class="callout-k">The number that actually matters</span>
+    <p>
+      At the midpoint, roughly $900 a month, the system needs to produce about <strong>one additional
+      $10,000 project per year</strong> to cover its running costs, and roughly <strong>three to five
+      per year</strong> to cover the build at a realistic blended engineering rate. Against a 20-person
+      delivery team's revenue that is a low bar &mdash; which is the real argument for building this.
+      It is worth stating in the PRD, because section 57 asks for ROI without ever establishing the
+      denominator.
+    </p>
+  </div>
+</section>
+
+<!-- ==================================================================== 12 -->
+<section id="s12">
+  <div class="sec-head">
+    <span class="n">12</span>
+    <h2>Risk register</h2>
+    <span class="ref">&sect;55</span>
+  </div>
+
+  <p class="lede">
+    Ordered by expected damage. The first three are the ones that end the project rather than delay
+    it, and two of them are not engineering risks at all.
+  </p>
+
+  <div class="tw">
+    <table class="sev">
+      <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr class="sev-hi">
+          <td class="name">The offer does not land</td>
+          <td>Medium</td>
+          <td>Fatal</td>
+          <td>The entire build assumes cold outbound can sell PixlerLab's services. Nothing in the system tests that assumption; it only scales whatever the answer is. <strong>Run the manual pilot in section 16 before phase 1</strong>, and treat its result as a go / no-go on the scope.</td>
+        </tr>
+        <tr class="sev-hi">
+          <td class="name">Domain reputation burns</td>
+          <td>Medium-high</td>
+          <td>Severe, slow to reverse</td>
+          <td>Separate sending domains, a genuine volume ramp, verification before every send, automatic pausing on bounce above 3% or complaints above 0.1%, and hard daily caps. Recovery takes months, during which the program does not function.</td>
+        </tr>
+        <tr class="sev-hi">
+          <td class="name">Nobody works the queue</td>
+          <td>High</td>
+          <td>Fatal, and silent</td>
+          <td>Sections 24 and 36 both assume a human clearing tasks and approving drafts daily. If that person is a founder between client calls, this degrades into an expensive lead list. Name the operator before phase 3 and measure queue age as a first-class metric.</td>
+        </tr>
+        <tr class="sev-med">
+          <td class="name">Duplicate outreach to a live prospect</td>
+          <td>Medium</td>
+          <td>High &mdash; reputational</td>
+          <td>One suppression evaluator, consulted at enrolment and again immediately before send. Never let Instantly's list be edited by hand. This is the most embarrassing failure available and it is entirely preventable.</td>
+        </tr>
+        <tr class="sev-med">
+          <td class="name">Bad merge corrupts the graph</td>
+          <td>Medium</td>
+          <td>High, and invisible</td>
+          <td>Auto-merge only on exact domain match; everything else queued. Merges reversible via pointer. Heavy test coverage on normalisation. Nobody notices this for months, which is what makes it expensive.</td>
+        </tr>
+        <tr class="sev-med">
+          <td class="name">Scope creep across 20+ weeks</td>
+          <td>High</td>
+          <td>Moderate</td>
+          <td>The PRD is 63 sections of good ideas, which is exactly the condition under which phases stretch. Exit gates are behaviours, not checklists; the out-of-scope list in section 9 is explicit for this reason.</td>
+        </tr>
+        <tr class="sev-med">
+          <td class="name">GDPR / CASL complaint</td>
+          <td>Low-medium</td>
+          <td>High</td>
+          <td>Decide territorial scope deliberately. If EU and UK are in, document a legitimate-interest assessment, honour erasure, and keep a genuine unsubscribe and a postal address in every message.</td>
+        </tr>
+        <tr class="sev-low">
+          <td class="name">Model invents a fact in a live email</td>
+          <td>Low, if built as specified</td>
+          <td>Moderate</td>
+          <td>Fact pack as sole input, post-generation claim validator, approval mode on by default. Prompt rules alone do not achieve this.</td>
+        </tr>
+        <tr class="sev-low">
+          <td class="name">Apify or a source changes shape</td>
+          <td>High</td>
+          <td>Low</td>
+          <td>Schema-validate at ingestion and reject loudly with a counter in the section 56 view. Raw payloads are retained, so a fixed parser can be replayed without re-scraping.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ==================================================================== 13 -->
+<section id="s13">
+  <div class="sec-head">
+    <span class="n">13</span>
+    <h2>Success targets</h2>
+    <span class="ref">&sect;57</span>
+  </div>
+
+  <p class="lede">
+    Section 57 lists the right metrics and no targets, which makes it impossible to tell whether the
+    system is working. These are the numbers I would hold it to. Treat them as starting hypotheses
+    to be replaced by your own data as it accrues.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Metric</th><th class="num">Target</th><th>When</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td class="name">Hard bounce rate</td><td class="num">&lt; 2%</td><td>always</td><td>Guardrail. Pause sending automatically above 3%.</td></tr>
+        <tr><td class="name">Spam complaint rate</td><td class="num">&lt; 0.1%</td><td>always</td><td>Guardrail. The single most dangerous number in the system.</td></tr>
+        <tr><td class="name">Unsubscribe rate</td><td class="num">&lt; 0.5%</td><td>always</td><td>Above this, the targeting is wrong, not the copy.</td></tr>
+        <tr><td class="name">Reply rate</td><td class="num">6&ndash;10%</td><td>month 3</td><td>All replies, tier-1 segments only.</td></tr>
+        <tr><td class="name">Positive reply rate</td><td class="num">1.5&ndash;3%</td><td>month 3</td><td>The real top-of-funnel metric. Opens are not a metric.</td></tr>
+        <tr><td class="name">Meetings booked</td><td class="num">8&ndash;12 / mo</td><td>month 4</td><td>At roughly 1,500 contacted per month.</td></tr>
+        <tr><td class="name">First attributed win</td><td class="num">1</td><td>month 5&ndash;6</td><td>Allow a full sales cycle. Earlier is luck, not signal.</td></tr>
+        <tr><td class="name">Duplicate company rate</td><td class="num">&lt; 1%</td><td>month 2</td><td>Sample 200 companies by hand and count. Do this manually; it is worth the hour.</td></tr>
+        <tr><td class="name">Contacted with verified email</td><td class="num">&gt; 95%</td><td>always</td><td>Directly upstream of the bounce guardrail.</td></tr>
+        <tr><td class="name">Task queue age</td><td class="num">&lt; 48h</td><td>always</td><td>Measures whether a human is actually operating the system.</td></tr>
+        <tr><td class="name">Score discrimination</td><td class="num">2x+</td><td>month 4</td><td>Positive reply rate above the threshold versus below. <strong>If this is near 1x, the scoring model is decoration</strong> &mdash; and finding that out is worth more than any dashboard.</td></tr>
+        <tr><td class="name">Pipeline coverage</td><td class="num">3x target</td><td>month 8</td><td>Qualified pipeline against the revenue target for the period.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout is-warn">
+    <span class="callout-k">On reading these honestly</span>
+    <p>
+      Every rate above needs its denominator shown next to it. A 12% positive reply rate on 25 sends
+      is not a result, and a dashboard that displays it as a headline number will drive a bad decision
+      within the week. This is the same discipline that section 8 argues the learning engine needs, and
+      it applies to the dashboards from day one: <strong>no rate without its n.</strong>
+    </p>
+  </div>
+</section>
+
+<!-- ==================================================================== 14 -->
+<section id="s14">
+  <div class="sec-head">
+    <span class="n">14</span>
+    <h2>Build vs buy</h2>
+    <span class="ref">strategic</span>
+  </div>
+
+  <p class="lede">
+    The PRD assumes building. That is defensible here, but not for every layer, and the assumption
+    deserves to be stated rather than inherited.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Layer</th><th>Verdict</th><th>Reasoning</th></tr></thead>
+      <tbody>
+        <tr><td class="name">Email verification</td><td><span class="chip chip-cut">buy</span></td><td>Solved, cheap, and getting it wrong burns domains. No upside to building.</td></tr>
+        <tr><td class="name">Sending infrastructure</td><td><span class="chip chip-cut">buy</span></td><td>Warm-up, rotation and deliverability are a specialist ongoing job, not a feature.</td></tr>
+        <tr><td class="name">Contact enrichment</td><td><span class="chip chip-cut">buy</span></td><td>You cannot out-collect Apollo. Buy the data, own what you infer from it.</td></tr>
+        <tr><td class="name">Calendar &amp; meeting booking</td><td><span class="chip chip-cut">buy</span></td><td>Cal.com or Calendly with a webhook into the event log. A week saved for no loss.</td></tr>
+        <tr><td class="name">The company graph</td><td><span class="chip chip-add">build</span></td><td>This is the asset. It compounds, it is yours, and it is what makes year two better than year one.</td></tr>
+        <tr><td class="name">Signals, scoring, routing</td><td><span class="chip chip-add">build</span></td><td>Encodes PixlerLab's specific judgement about who is worth contacting. Nothing off the shelf knows that a customised Prestige theme on a 25,000-product catalog is a Shopify performance lead.</td></tr>
+        <tr><td class="name">Fact-grounded composition</td><td><span class="chip chip-add">build</span></td><td>The validator and the provenance chain are the differentiator. Generic AI writers have neither.</td></tr>
+        <tr><td class="name">The attribution loop</td><td><span class="chip chip-add">build</span></td><td>The reason the system exists. Section 63 is right that this is the architectural principle.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>The alternative worth naming</h3>
+  <p>
+    <strong>Clay plus a standard CRM plus Instantly</strong> would reach a working version of the
+    enrich-score-route-send loop in roughly two to three weeks rather than twenty. That is a real
+    option and it should be rejected deliberately rather than ignored. The trade-offs are: per-credit
+    costs that grow with volume rather than amortising; the company graph living in someone else's
+    schema, so the compounding asset is rented; and the attribution loop &mdash; the actual point of
+    the product &mdash; being the part Clay does least well.
+  </p>
+  <p>
+    Building is nonetheless the right call here, for three reasons the PRD does not state. You already
+    own the hard, differentiated half: the Apify Shopify intelligence and the Google intent detectors
+    are the parts that are genuinely difficult to buy. <em>This is PixlerLab's own competence</em> &mdash;
+    a 20-person development team building an internal system is not a stretch assignment. And a working
+    revenue OS is a credible sellable product and an unusually strong case study for exactly the
+    services being sold. That last point is worth making explicit in the PRD, because it changes the
+    calculus on tenancy: if this might one day be multi-tenant, the cost of leaving a
+    <code>space_id</code>-shaped hole in the schema now is close to zero, and the cost of retrofitting
+    one in year two is very high.
+  </p>
+</section>
+
+<!-- ==================================================================== 15 -->
+<section id="s15">
+  <div class="sec-head">
+    <span class="n">15</span>
+    <h2>Decisions I need</h2>
+    <span class="ref">blocking</span>
+  </div>
+
+  <p class="lede">
+    Eight decisions that change what gets built. The first four block phase 1; the rest can wait until
+    the phase that needs them. Where I have a recommendation, it is stated.
+  </p>
+
+  <ol class="decisions">
+    <li>
+      <span class="dn">01</span>
+      <div>
+        <div class="dq">Which single segment does the MVP target?</div>
+        <div class="da"><b>My recommendation: AI hiring for the technical pilot, white-label agencies for the manual pilot.</b> AI hiring has the cleanest signal and you have already built the detector, so the pipeline can be proven without also solving discovery. White-label agencies have the best economics &mdash; repeat buyers, recurring work, a buyer who needs no education &mdash; but the list is harder to build, so start it by hand. Running both answers two questions at once.</div>
+      </div>
+    </li>
+    <li>
+      <span class="dn">02</span>
+      <div>
+        <div class="dq">Inngest, or a self-hosted queue on Postgres?</div>
+        <div class="da"><b>My recommendation: Inngest.</b> Durable steps, retries and fan-out for free, and the thirteen stages map onto it directly. A <code>jobs</code> table with <code>pg_cron</code> avoids a vendor but means writing retry, backoff and dead-letter semantics yourself &mdash; roughly a week you could spend on the graph instead. Choose before phase 0, because everything else sits on it.</div>
+      </div>
+    </li>
+    <li>
+      <span class="dn">03</span>
+      <div>
+        <div class="dq">Are EU and UK prospects in scope?</div>
+        <div class="da">This is a business decision with engineering consequences and it cannot be deferred past phase 1, because it determines whether territory becomes a suppression dimension and whether an erasure path is required. If the answer is yes, budget for counsel and a documented legitimate-interest assessment. If US-only is acceptable commercially, the compliance surface shrinks dramatically.</div>
+      </div>
+    </li>
+    <li>
+      <span class="dn">04</span>
+      <div>
+        <div class="dq">Who operates this daily, by name?</div>
+        <div class="da">Not a role &mdash; a person. Sections 24, 29 and 36 all assume someone clears tasks, approves drafts and marks lead quality every working day. <b>If that person does not exist, halve the scope</b> and build toward a system that surfaces ten leads a week to a founder rather than one that manages a queue nobody works. This changes the design more than any technical decision on this list.</div>
+      </div>
+    </li>
+    <li>
+      <span class="dn">05</span>
+      <div>
+        <div class="dq">Instantly, your own Gmail mailboxes, or both?</div>
+        <div class="da"><b>My recommendation: both, split by purpose.</b> Instantly for cold volume on dedicated domains; the Gmail integration you have already built for one-to-one high-value outreach and all reply handling. Under about 500 sends a week, dropping Instantly entirely is viable and removes a whole class of state-synchronisation problems &mdash; at the cost of owning warm-up and domain reputation yourself. Decide in phase 3.</div>
+      </div>
+    </li>
+    <li>
+      <span class="dn">06</span>
+      <div>
+        <div class="dq">What is the monthly ceiling on enrichment spend?</div>
+        <div class="da">Per-record costs scale with list size and this is the largest recurring line. A hard cap enforced in code, with the pipeline degrading gracefully rather than failing when it is hit, is much better than a surprise invoice. Needed before phase 1's enrichment work.</div>
+      </div>
+    </li>
+    <li>
+      <span class="dn">07</span>
+      <div>
+        <div class="dq">One engineer or two?</div>
+        <div class="da">Two devs take this to roughly 13&ndash;15 weeks rather than 20&ndash;24, splitting cleanly at the ingestion / outreach seam after phase 1. It does not halve, because the graph work in phase 1 is inherently serial and everything depends on it. If it is two, the second person's best first task is the Instantly and Gmail delivery layer, which is genuinely independent.</div>
+      </div>
+    </li>
+    <li>
+      <span class="dn">08</span>
+      <div>
+        <div class="dq">Internal tool only, or a future product?</div>
+        <div class="da">If there is any chance this is sold or offered to clients, leave a <code>space_id</code>-shaped hole in the schema now. Your Gmail doc already notes that adding tenancy later is "a mechanical change to the RLS predicates" &mdash; that is true while the schema is small and stops being true once thirty tables and an event log exist. Costs almost nothing in phase 1.</div>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<!-- ==================================================================== 16 -->
+<section id="s16">
+  <div class="sec-head">
+    <span class="n">16</span>
+    <h2>Start here</h2>
+    <span class="ref">week 0</span>
+  </div>
+
+  <p class="lede">
+    Two things happen before any pipeline code is written. One is engineering and takes two weeks. The
+    other is not engineering at all, takes a few days of one person's time, and is the highest-value
+    action available in this entire document.
+  </p>
+
+  <h3>Track A &mdash; Phase 0, immediately</h3>
+  <p>
+    Auth, the job runtime, the event log, the test harness, error tracking. Two weeks, no features,
+    and it unblocks deployment of everything that already exists. Your own Gmail documentation already
+    identifies this correctly and it has been deferred once; deferring it again means the Gmail work
+    that is finished cannot ship.
+  </p>
+
+  <h3>Track B &mdash; the 100-lead manual pilot, in parallel</h3>
+  <p>
+    Hand-pick 100 companies in the chosen segment. Write the emails by hand &mdash; personalised from
+    real observations, exactly the way the system is eventually meant to. Send them from one warmed
+    mailbox over two weeks. Reply to everyone who answers. Count positive replies and meetings.
+  </p>
+
+  <div class="mgrid">
+    <div class="mcell"><span class="mk">Cost</span><span class="mv">~3 d</span><span class="mn">One person, plus a warmed mailbox you already have.</span></div>
+    <div class="mcell"><span class="mk">Tests</span><span class="mv is-accent">the offer</span><span class="mn">The one assumption the entire build rests on and never checks.</span></div>
+    <div class="mcell"><span class="mk">Green light</span><span class="mv">3&ndash;8</span><span class="mn">Positive replies. Build the full scope with confidence.</span></div>
+    <div class="mcell"><span class="mk">Red light</span><span class="mv">0&ndash;1</span><span class="mn">Fix the offer or the segment first. The system would only scale the miss.</span></div>
+  </div>
+
+  <p>
+    The pilot also produces things the build needs and cannot invent: the messages that actually
+    earned replies become the few-shot examples for the composer; the objections you hear become the
+    reply classifier's categories; and the reasons you personally rejected companies while hand-picking
+    the list <em>are the scoring rules</em>, written down for the first time. Section 16 of the PRD asks
+    the AI to explain why a company was selected. Track B is how you learn what that explanation should
+    say.
+  </p>
+
+  <div class="callout">
+    <span class="callout-k">The honest summary</span>
+    <p>
+      This is a good PRD describing a system worth building, and the codebase underneath it is smaller
+      and cleaner than the document assumes &mdash; which is mostly good news, because there is little
+      to unwind and the Gmail and Vault foundations are solid. The two real risks are not technical.
+      One is that twenty weeks of work is planned as ten and gets abandoned at week twelve with the
+      loop still open. The other is that the loop closes perfectly and nobody works the queue.
+    </p>
+    <p>
+      Plan for twenty. Name the operator. Prove the offer by hand first. Then build it in the order
+      above, and the closed loop that section 63 calls the most important architectural principle in
+      the product will actually close.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div>
+    Assessment of <em>PixlerLab Revenue Intelligence &amp; Outbound OS</em>, PRD v1.0 &mdash; grounded in
+    the <code>sales-crm</code> codebase at commit <code>5533097</code>.
+  </div>
+  <div class="mono">25 AUG 2026</div>
+</footer>
+
+</main>
+</div>
