@@ -12,6 +12,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+
+    // Not Next.js code. `google-app-script/` is Google Apps Script (a V8
+    // sandbox with no module system at all) plus a dependency-free Node
+    // harness that runs it under `node` with no build step. Its CommonJS
+    // `require()` calls are the only way either half can work, so linting
+    // them with the Next TypeScript rules reports 10 errors that have no
+    // valid fix. The harness is covered by its own suite instead.
+    "google-app-script/**",
   ]),
 ]);
 
