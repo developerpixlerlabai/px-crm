@@ -10,8 +10,12 @@ import type { Lead, LeadUpdates, LeadsResponse } from "@/lib/types";
  * sidesteps CORS entirely — Apps Script cannot set CORS headers.
  */
 
-const API_URL = process.env.SHEETS_API_URL;
-const API_TOKEN = process.env.SHEETS_API_TOKEN;
+// Both trimmed: a value pasted into a hosting dashboard easily picks up a
+// trailing newline, and neither failure names itself — in the URL it becomes
+// part of the path and every call 404s, in the token it fails the comparison
+// in Api.gs and every call 401s.
+const API_URL = process.env.SHEETS_API_URL?.trim();
+const API_TOKEN = process.env.SHEETS_API_TOKEN?.trim();
 
 /**
  * Which tab to read and write. Unset means the live Leads tab, which is the
@@ -54,6 +58,21 @@ async function unwrap<T>(res: Response): Promise<T> {
   const text = await res.text();
 
   if (!res.ok) {
+    // 404 is worth its own message: it means Google found no web app at that
+    // URL at all, so access settings are beside the point. A deployment that
+    // is merely locked down answers 200 with an HTML login page and lands in
+    // the JSON.parse branch below instead.
+    if (res.status === 404) {
+      throw new SheetsError(
+        "Apps Script returned HTTP 404 — no web app is deployed at " +
+          "SHEETS_API_URL. The deployment it points at was most likely " +
+          "deleted; redeploy with Deploy → Manage deployments → " +
+          "Version: New version (which keeps the URL), or paste the /exec " +
+          "URL of a new deployment.",
+        502,
+      );
+    }
+
     throw new SheetsError(
       `Apps Script returned HTTP ${res.status}. Check that the deployment is ` +
         `set to "Anyone" access and that SHEETS_API_URL ends in /exec.`,
