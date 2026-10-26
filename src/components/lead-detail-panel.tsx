@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2, Sparkles } from "lucide-react";
 
 import { PriorityBadge, SegmentBadge } from "@/components/badges";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { formatFullDate, hostOf, splitSignals } from "@/lib/format";
+import { researchVerdict, type LeadResearch } from "@/lib/research-schema";
 import {
   EDITABLE_FIELDS,
   STATUSES,
@@ -53,12 +54,14 @@ export function LeadDetailPanel({
   open,
   onOpenChange,
   onSave,
+  onResearch,
   saving,
 }: {
   lead: Lead | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (lead: Lead, updates: LeadUpdates) => Promise<void>;
+  onResearch: (lead: Lead) => Promise<Lead | null>;
   saving: boolean;
 }) {
   return (
@@ -75,6 +78,7 @@ export function LeadDetailPanel({
             lead={lead}
             onOpenChange={onOpenChange}
             onSave={onSave}
+            onResearch={onResearch}
             saving={saving}
           />
         )}
@@ -87,14 +91,17 @@ function LeadForm({
   lead,
   onOpenChange,
   onSave,
+  onResearch,
   saving,
 }: {
   lead: Lead;
   onOpenChange: (open: boolean) => void;
   onSave: (lead: Lead, updates: LeadUpdates) => Promise<void>;
+  onResearch: (lead: Lead) => Promise<Lead | null>;
   saving: boolean;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFrom(lead));
+  const [researching, setResearching] = useState(false);
 
   // Compared against the live lead, so a successful save (which updates the
   // lead in place) flips this back to "no changes" on its own.
@@ -117,6 +124,24 @@ function LeadForm({
   async function handleSave() {
     if (!hasChanges) return;
     await onSave(lead, dirty);
+  }
+
+  async function handleResearch() {
+    setResearching(true);
+    const updated = await onResearch(lead);
+    setResearching(false);
+    if (!updated) return;
+    // The server only fills fields that were empty in the database. Mirror
+    // that here for the boxes still empty on screen, so the form does not show
+    // the new values as unsaved deletions — and anything typed but not yet
+    // saved is left alone.
+    const filled = draftFrom(updated);
+    setDraft((d) => ({
+      ...d,
+      contactName: d.contactName || filled.contactName,
+      titleRole: d.titleRole || filled.titleRole,
+      notes: d.notes || filled.notes,
+    }));
   }
 
   return (
@@ -206,6 +231,38 @@ function LeadForm({
               <ExternalLink className="size-3.5 shrink-0" />
             </Button>
           )}
+        </Section>
+
+        <Separator />
+
+        <Section title="Research">
+          {lead.research ? (
+            <ResearchCard research={lead.research} researchedAt={lead.researchedAt} />
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Look up the company, its funding and size, and the person to contact, then
+              score it against the ICP. Fills Name, Title and Notes where they are empty.
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            onClick={handleResearch}
+            disabled={researching}
+          >
+            {researching ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sparkles className="size-4" />
+            )}
+            {researching
+              ? "Researching… usually under a minute"
+              : lead.research
+                ? "Research again"
+                : "Research this company"}
+          </Button>
         </Section>
 
         <Separator />
@@ -353,6 +410,108 @@ function Field({
         {label}
       </Label>
       <div className="mt-auto min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function ResearchCard({
+  research: r,
+  researchedAt,
+}: {
+  research: LeadResearch;
+  researchedAt: string;
+}) {
+  const { total, action } = researchVerdict(r);
+  const person = [r.decision_maker.name, r.decision_maker.title].filter(Boolean).join(", ");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-2xl font-semibold tabular-nums">
+          {total}
+          <span className="text-muted-foreground text-sm font-normal">/100</span>
+        </span>
+        <span className="text-sm font-medium">{action}</span>
+        <span className="text-muted-foreground text-sm">
+          {r.fit.segment === "none" ? "No ICP segment" : `Segment ${r.fit.segment}`} · fit{" "}
+          {r.fit.fit_points}/40 · intent {r.fit.intent_points}/35 · access{" "}
+          {r.fit.access_points}/25
+        </span>
+      </div>
+      {r.fit.segment_reason && (
+        <p className="text-muted-foreground text-sm leading-relaxed">{r.fit.segment_reason}</p>
+      )}
+
+      <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+        <Meta label="What they sell" value={r.company.what_they_sell} />
+        <Meta label="Stage" value={r.company.stage} />
+        <Meta label="Funding" value={r.company.funding} />
+        <Meta label="Employees" value={r.company.employees} />
+        <Meta label="Headquarters" value={r.company.headquarters} />
+        <Meta label="AI signals" value={r.company.ai_signals} />
+        {person && (
+          <>
+            <dt className="text-muted-foreground whitespace-nowrap">Decision-maker</dt>
+            <dd className="min-w-0 break-words">
+              {person}
+              {r.decision_maker.linkedin_url && (
+                <a
+                  href={r.decision_maker.linkedin_url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-muted-foreground hover:text-foreground ml-2 inline-flex items-center gap-1 hover:underline"
+                >
+                  LinkedIn
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+              {r.decision_maker.why && (
+                <span className="text-muted-foreground block">{r.decision_maker.why}</span>
+              )}
+            </dd>
+          </>
+        )}
+        <Meta label="Opening angle" value={r.outreach_angle} />
+        <Meta label="Case study" value={r.case_study} />
+      </dl>
+
+      {r.sources.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-muted-foreground text-xs">Sources</p>
+          <ul className="space-y-0.5 text-sm">
+            {r.sources.map((source) => (
+              <li key={source.url} className="truncate">
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="hover:underline"
+                >
+                  {source.title || hostOf(source.url)}
+                </a>
+                <span className="text-muted-foreground"> · {hostOf(source.url)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {r.unverified.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-muted-foreground text-xs">Not verified</p>
+          <ul className="text-muted-foreground list-disc space-y-0.5 pl-4 text-sm">
+            {r.unverified.map((claim) => (
+              <li key={claim}>{claim}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {researchedAt && (
+        <p className="text-muted-foreground text-xs">
+          Researched {formatFullDate(researchedAt)} · no email is looked up or guessed
+        </p>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServiceClient } from "@/lib/supabase/service";
+import type { LeadResearch } from "@/lib/research-schema";
 import type { EditableField, Lead, LeadUpdates, LeadsResponse } from "@/lib/types";
 
 /**
@@ -39,12 +40,14 @@ type LeadRow = {
   segment: string;
   intent: string;
   domain: string;
+  research: LeadResearch | null;
+  researched_at: string | null;
 };
 
 const COLUMNS =
   "key, date_found, priority, score, company, contact_name, title_role, email, " +
   "signal_source, matched_signals, headline, snippet, source_url, status, notes, " +
-  "outreach_sent, segment, intent, domain";
+  "outreach_sent, segment, intent, domain, research, researched_at";
 
 const EDITABLE_COLUMNS: Record<EditableField, keyof LeadRow> = {
   contactName: "contact_name",
@@ -76,6 +79,8 @@ function toLead(row: LeadRow): Lead {
     segment: row.segment,
     intent: row.intent,
     domain: row.domain,
+    research: row.research,
+    researchedAt: row.researched_at ?? "",
   };
 }
 
@@ -177,4 +182,48 @@ export async function updateLeads(
 
   const failed = results.filter((r) => !r.ok).length;
   return { ok: failed === 0, results, updated: results.length - failed, failed };
+}
+
+/** One lead by its key, or null. */
+export async function getLead(key: string): Promise<Lead | null> {
+  const { data, error } = await createServiceClient()
+    .from("leads")
+    .select(COLUMNS)
+    .eq("key", key)
+    .returns<LeadRow[]>()
+    .maybeSingle();
+  if (error) throw new LeadsError(`Could not load the lead: ${error.message}`, 502);
+  return data ? toLead(data) : null;
+}
+
+/**
+ * Stores a research result and fills the lead's empty fields from it — the
+ * domain, the decision-maker's name and title, and a one-paragraph note.
+ * Anything a person has already typed is left exactly as it is.
+ */
+export async function saveResearch(lead: Lead, research: LeadResearch, note: string): Promise<Lead> {
+  const domain = hostOf(research.company.website);
+  const patch: Partial<LeadRow> = {
+    research,
+    researched_at: new Date().toISOString(),
+    ...(lead.domain ? {} : domain ? { domain } : {}),
+    ...(lead.contactName ? {} : { contact_name: research.decision_maker.name }),
+    ...(lead.titleRole ? {} : { title_role: research.decision_maker.title }),
+    ...(lead.notes ? {} : { notes: note }),
+  };
+
+  const { data, error } = await createServiceClient()
+    .from("leads")
+    .update(patch)
+    .eq("key", lead.key)
+    .select(COLUMNS)
+    .returns<LeadRow[]>();
+  if (error) throw new LeadsError(`Could not save the research: ${error.message}`, 502);
+  if (!data.length) throw new LeadsError("Lead not found — it may have been deleted.", 404);
+  return toLead(data[0]);
+}
+
+function hostOf(url: string): string {
+  const m = String(url || "").match(/^https?:\/\/([^/\s?#]+)/i);
+  return m ? m[1].replace(/^www\./, "").toLowerCase() : "";
 }

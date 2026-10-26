@@ -1,3 +1,5 @@
+import type { LeadResearch } from "@/lib/research-schema";
+
 /**
  * One row of public.leads (supabase/migrations/0003_leads.sql), camel-cased by
  * toLead() in lib/leads.ts. If you expose another column, add it in both places.
@@ -24,6 +26,10 @@ export type Lead = {
   segment: string;
   intent: string;
   domain: string;
+
+  /** Result of the panel's "Research" button; null until it has been run. */
+  research: LeadResearch | null;
+  researchedAt: string;
 };
 
 /**

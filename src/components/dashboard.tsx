@@ -260,6 +260,33 @@ export function Dashboard({
     [],
   );
 
+  /**
+   * Runs the server-side research for one lead and adopts the updated row.
+   * Not optimistic: there is nothing to show until Claude has finished.
+   * Returns the updated lead, or null when the research failed.
+   */
+  const researchLead = useCallback(async (lead: Lead): Promise<Lead | null> => {
+    try {
+      const res = await fetch("/api/leads/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: lead.key }),
+      });
+      const body = (await res.json()) as { lead?: Lead; error?: string };
+      if (!res.ok || !body.lead) throw new Error(body.error ?? `HTTP ${res.status}`);
+
+      const updated = body.lead;
+      setLeads((prev) => prev.map((l) => (l.key === lead.key ? updated : l)));
+      toast.success(`Researched ${updated.company || "lead"}`);
+      return updated;
+    } catch (err) {
+      toast.error("Research failed", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }, []);
+
   const onStatusChange = useCallback(
     (lead: Lead, status: string) => {
       void saveLead(lead, { status });
@@ -449,6 +476,7 @@ export function Dashboard({
         open={selected !== null}
         onOpenChange={(open) => !open && setSelectedKey(null)}
         onSave={saveLead}
+        onResearch={researchLead}
         saving={selected ? pendingKeys.has(selected.key) : false}
       />
     </div>
