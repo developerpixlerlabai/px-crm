@@ -370,7 +370,7 @@ function Meta({ label, value }: { label: string; value: string }) {
 /**
  * Picks what to show for the signal.
  *
- * For HN postings Code.gs derives the headline from the start of the posting
+ * For HN postings the scraper derives the headline from the start of the posting
  * body, so Headline and Snippet are near-duplicates — but the snippet is the
  * longer of the two (300 chars vs a truncated headline). Printing both reads
  * as a stutter; dropping the snippet loses the tail. So when they overlap,

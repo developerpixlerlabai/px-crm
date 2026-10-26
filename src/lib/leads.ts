@@ -87,22 +87,39 @@ export async function fetchLeads(): Promise<LeadsResponse> {
   const supabase = createServiceClient();
 
   // PostgREST caps a response at the project's max-rows (1000 by default), so
-  // page through rather than silently dropping the oldest leads.
+  // the leads come in pages. The first page also returns the total, and every
+  // other page is then requested at once — two round trips however many leads
+  // there are, instead of one per thousand.
   const PAGE = 1000;
-  const rows: LeadRow[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
+  const page = (from: number, maxSeq?: number) => {
+    let query = supabase
       .from("leads")
-      .select(COLUMNS)
-      .order("seq", { ascending: false })
-      .range(from, from + PAGE - 1)
-      .returns<LeadRow[]>();
+      .select(`seq, ${COLUMNS}`, from === 0 ? { count: "exact" } : undefined)
+      .order("seq", { ascending: false });
+    // Pin the later pages to the first page's newest lead, so a scrape that
+    // inserts mid-load cannot shift the offsets and duplicate a row.
+    if (maxSeq !== undefined) query = query.lte("seq", maxSeq);
+    return query.range(from, from + PAGE - 1).returns<Array<LeadRow & { seq: number }>>();
+  };
 
-    if (error) {
-      throw new LeadsError(`Could not load leads: ${error.message}`, 502);
+  const first = await page(0);
+  if (first.error) {
+    throw new LeadsError(`Could not load leads: ${first.error.message}`, 502);
+  }
+
+  const rows: LeadRow[] = [...first.data];
+  const total = first.count ?? first.data.length;
+  if (first.data.length === PAGE && total > PAGE) {
+    const maxSeq = first.data[0].seq;
+    const rest = await Promise.all(
+      Array.from({ length: Math.ceil(total / PAGE) - 1 }, (_, i) => page((i + 1) * PAGE, maxSeq)),
+    );
+    for (const result of rest) {
+      if (result.error) {
+        throw new LeadsError(`Could not load leads: ${result.error.message}`, 502);
+      }
+      rows.push(...result.data);
     }
-    rows.push(...data);
-    if (data.length < PAGE) break;
   }
 
   return {

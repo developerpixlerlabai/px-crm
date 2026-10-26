@@ -20,6 +20,9 @@ export default async function Page() {
 
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
+  // Independent reads, so neither waits on the other.
+  const mailboxes = loadMailboxes();
+
   let data: LeadsResponse;
   try {
     data = await fetchLeads();
@@ -35,7 +38,7 @@ export default async function Page() {
   return (
     <Dashboard
       initial={data}
-      mailboxes={await loadMailboxes()}
+      mailboxes={await mailboxes}
       gmailConfigured={isGoogleConfigured()}
     />
   );

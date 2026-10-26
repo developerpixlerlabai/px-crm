@@ -1,6 +1,7 @@
-// Ported from google-app-script/Code.gs (v3). The tuning comments are kept
+// Scraper configuration, ported from the retired Apps Script scraper (Code.gs
+// v3, in git history before its removal). The tuning comments are kept
 // verbatim: they are the record of what was measured and why each value is
-// what it is. Change a value here, not in Code.gs.
+// what it is.
 
 // ─── CONFIGURATION ───────────────────────────────────────────
 

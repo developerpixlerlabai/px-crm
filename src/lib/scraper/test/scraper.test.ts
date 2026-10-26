@@ -1,7 +1,7 @@
 // Offline regression suite for the scraper. Run: npm test
 //
-// Ported from the most load-bearing cases in google-app-script/test/test.js;
-// each one pins a bug that was found against live data.
+// Ported from the most load-bearing cases in the Apps Script scraper's own
+// suite (git history); each one pins a bug that was found against live data.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

@@ -3,8 +3,9 @@
 A Next.js CRM over the intent leads its scraper finds each morning.
 
 Leads live in **Supabase Postgres** (`public.leads`). The scraper
-(`src/lib/scraper/`) is a TypeScript port of the old Apps Script
-`google-app-script/Code.gs`; a scheduled GitHub Action calls it once a day.
+(`src/lib/scraper/`) is a TypeScript port of the original Apps Script scraper
+(`Code.gs`, now only in git history); a scheduled GitHub Action calls it once a
+day.
 
 ```
 Google News / HN / WWR / Remotive / Jobicy / alerts
@@ -56,33 +57,12 @@ npm run dev
 Open http://localhost:3000. If the credentials are missing or wrong, the page
 shows setup steps instead of an empty table.
 
-### 3. Import the existing leads
-
-The import reads the sheet through the old Apps Script web app (`Api.gs`), so
-keep its credentials in `.env.local` for now:
-
-```dotenv
-SHEETS_API_URL=https://script.google.com/macros/s/AKfy.../exec
-SHEETS_API_TOKEN=abc123...
-# SHEETS_TAB="Copy of Leads"   # optional: import a different tab
-```
-
-```bash
-npm run import:sheet
-```
-
-It is insert-only: leads already in Supabase are skipped, never overwritten, so
-re-running it after each morning's scrape brings new leads across without
-touching statuses or notes edited in the dashboard. Edits made in the sheet
-after a lead was imported do not come across. `Api.gs` only exposes columns
-A–R, so Technology / Service Opportunity / Recommended Outreach arrive empty.
-
 ---
 
 ## The scraper
 
-`src/lib/scraper/` is `Code.gs` ported to TypeScript: the same sources, keyword
-lists, scoring, dedupe and quota. Tuning lives in `config.ts` (sources,
+`src/lib/scraper/` is the Apps Script `Code.gs` ported to TypeScript: the same
+sources, keyword lists, scoring, dedupe and quota. Tuning lives in `config.ts` (sources,
 thresholds) and `keywords.ts` (every scoring list); their comments record what
 was measured and why each value is what it is. The port was checked against
 `Code.gs` on identical inputs — 1,370 live items and all 2,811 stored
@@ -152,14 +132,14 @@ Only these six fields, enforced server-side by `EDITABLE_FIELDS` in
 Everything the scraper produces — Score, Headline, Source URL, Segment, Intent —
 is read-only, so a dashboard bug cannot corrupt it.
 
-Status values match the sheet's old data validation list from
-`applyLeadsFormatting_()`, so imported and new leads share one vocabulary.
+Status values match the old Google Sheet's dropdown, so the 2,811 leads
+imported from it and every new one share one vocabulary.
 
 ### Lead identity
 
 Each lead is addressed by `key`: its Source URL, or `company|headline` when
-there is none. It is a generated, unique column in Postgres, so the scraper,
-the import and the dashboard can never compute it differently.
+there is none. It is a generated, unique column in Postgres, so the scraper
+and the dashboard can never compute it differently.
 
 ---
 
@@ -184,7 +164,6 @@ src/
     format.ts             hydration-safe date and URL helpers
     scraper/              the daily scrape (config, keywords, sources, scoring, digest)
 scripts/
-  import-sheet.mjs        copies leads from the Google Sheet into Supabase
   scrape-audit.ts         npm run scrape:audit
 supabase/migrations/      schema; run in order
 ```
@@ -196,9 +175,14 @@ To expose another column, add it to the migration, to `LeadRow` / `COLUMNS` /
 
 ## Caching
 
-None. The page and `/api/leads` query Postgres on every request, which is fast
-enough that the old 60-second ISR window is gone, and a write is visible on the
-next read.
+None. The page and `/api/leads` query Postgres on every request, and a write
+is visible on the next read. That only stays fast because the server code runs
+next to the database: Supabase is in Mumbai (ap-south-1), and `vercel.json`
+pins the functions to `bom1`. Left at Vercel's default `iad1` (Washington),
+every query crosses the globe and the dashboard takes seconds to load.
+
+Leads load in 1,000-row pages; the first returns the total and the rest are
+fetched in parallel, so a load is two round trips whatever the table size.
 
 ## Scripts
 
@@ -206,7 +190,6 @@ next read.
 npm run dev     # dev server
 npm run build   # production build
 npm run lint    # eslint
-npm run import:sheet  # copy new leads from the Google Sheet
 npm run scrape:audit  # check every scraper source, writes nothing
 npm test              # scraper regression suite
 npx tsc --noEmit

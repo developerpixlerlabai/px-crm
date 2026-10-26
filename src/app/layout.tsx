@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Sales CRM — Intent Leads",
   description:
-    "Dashboard for the leads collected by the Apps Script intent-signal scraper.",
+    "Dashboard for the leads collected by the daily intent-signal scraper.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

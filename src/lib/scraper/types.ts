@@ -1,6 +1,6 @@
 /**
- * Every source funnels into one normalized Item. Field names follow Code.gs so
- * the port can be checked against it line for line.
+ * Every source funnels into one normalized Item. Field names follow the Apps
+ * Script scraper this was ported from, so the two can be compared in history.
  */
 export type Item = {
   kind: "news" | "job";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { Columns3, Loader2, LogOut, Mail, RefreshCw, Rows3, Table2 } from "lucide-react";
+import { Columns3, Loader2, LogOut, Mail, RefreshCw, Rows3 } from "lucide-react";
 import { toast } from "sonner";
 
 import { logout } from "@/app/actions/auth";
@@ -334,7 +334,7 @@ export function Dashboard({
               )
             ) : (
               <>
-                {leads.length} leads scraped by the Apps Script pipeline · synced{" "}
+                {leads.length} leads from the daily intent scrape · synced{" "}
                 {formatClock(fetchedAt)} UTC
               </>
             )}
@@ -363,24 +363,6 @@ export function Dashboard({
 
           <MailboxDialog initial={mailboxes} configured={gmailConfigured} />
 
-          {process.env.NEXT_PUBLIC_SHEET_URL && (
-            <Button
-              variant="outline"
-              // Rendering as an anchor, so Base UI must not expect a native
-              // <button> underneath.
-              nativeButton={false}
-              render={
-                <a
-                  href={process.env.NEXT_PUBLIC_SHEET_URL}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                />
-              }
-            >
-              <Table2 className="size-4" />
-              Open sheet
-            </Button>
-          )}
           {/* Hidden on the Mail tab: this refreshes LEADS, and the mail list has
               its own Refresh. Two identical buttons meaning different things is
               worse than one. */}

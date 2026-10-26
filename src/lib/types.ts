@@ -52,8 +52,8 @@ export type LeadsResponse = {
 };
 
 /**
- * The Status dropdown values from applyLeadsFormatting_() in Code.gs, kept
- * identical so imported leads and new ones share one vocabulary.
+ * The Status values every lead uses, inherited from the old Google Sheet's
+ * dropdown so imported leads and new ones share one vocabulary.
  */
 export const STATUSES = [
   "New",
@@ -73,9 +73,9 @@ export const CLOSED_STATUSES: string[] = ["Not a Fit", "Closed Won"];
 export type Priority = "hot" | "warm" | "cool";
 
 /**
- * Code.gs writes Priority as an emoji label ("🔥 Hot"). Derive from Score
- * instead so the dashboard is not emoji-parsing, and thresholds stay in one
- * place — they match scoreLabel_() in Code.gs.
+ * The scraper stores Priority as an emoji label ("🔥 Hot"). Derive from Score
+ * instead so the dashboard is not emoji-parsing — the thresholds match
+ * scoreLabel() in lib/scraper/evaluate.ts.
  */
 export function priorityOf(lead: Pick<Lead, "score">): Priority {
   if (lead.score >= 8) return "hot";

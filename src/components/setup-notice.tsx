@@ -39,13 +39,6 @@ SUPABASE_SECRET_KEY=sb_secret_...`}
             </pre>
           </li>
           <li>
-            To bring existing leads over from the Google Sheet, run{" "}
-            <code className="bg-muted rounded px-1">
-              npm run import:sheet
-            </code>
-            .
-          </li>
-          <li>
             Restart <code className="bg-muted rounded px-1">npm run dev</code> and
             reload this page.
           </li>

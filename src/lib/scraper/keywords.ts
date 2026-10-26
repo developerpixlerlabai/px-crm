@@ -1,4 +1,5 @@
-// Keyword lists and patterns, ported verbatim from google-app-script/Code.gs.
+// Keyword lists and patterns, ported verbatim from the retired Apps Script
+// scraper (Code.gs, in git history).
 // Every list is matched through hasKeyword() in text.ts (leading word edge
 // only) unless a comment says otherwise.
 

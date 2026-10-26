@@ -127,7 +127,7 @@ export function hostOf(url: string): string {
   }
 }
 
-/** Splits Code.gs's comma-joined "Funding, Product Launch" into chips. */
+/** Splits the scraper's comma-joined "Funding, Product Launch" into chips. */
 export function splitSignals(value: string): string[] {
   if (!value) return [];
   return value
