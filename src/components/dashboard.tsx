@@ -261,31 +261,45 @@ export function Dashboard({
   );
 
   /**
-   * Runs the server-side research for one lead and adopts the updated row.
-   * Not optimistic: there is nothing to show until Claude has finished.
-   * Returns the updated lead, or null when the research failed.
+   * Runs one of the per-lead Claude actions (research, outreach drafts) and
+   * adopts the updated row. Not optimistic: there is nothing to show until
+   * Claude has finished. Returns the updated lead, or null on failure.
    */
-  const researchLead = useCallback(async (lead: Lead): Promise<Lead | null> => {
-    try {
-      const res = await fetch("/api/leads/research", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: lead.key }),
-      });
-      const body = (await res.json()) as { lead?: Lead; error?: string };
-      if (!res.ok || !body.lead) throw new Error(body.error ?? `HTTP ${res.status}`);
+  const runLeadAction = useCallback(
+    async (path: string, lead: Lead, done: string, failed: string): Promise<Lead | null> => {
+      try {
+        const res = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: lead.key }),
+        });
+        const body = (await res.json()) as { lead?: Lead; error?: string };
+        if (!res.ok || !body.lead) throw new Error(body.error ?? `HTTP ${res.status}`);
 
-      const updated = body.lead;
-      setLeads((prev) => prev.map((l) => (l.key === lead.key ? updated : l)));
-      toast.success(`Researched ${updated.company || "lead"}`);
-      return updated;
-    } catch (err) {
-      toast.error("Research failed", {
-        description: err instanceof Error ? err.message : String(err),
-      });
-      return null;
-    }
-  }, []);
+        const updated = body.lead;
+        setLeads((prev) => prev.map((l) => (l.key === lead.key ? updated : l)));
+        toast.success(`${done} ${updated.company || "lead"}`);
+        return updated;
+      } catch (err) {
+        toast.error(failed, {
+          description: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+    },
+    [],
+  );
+
+  const researchLead = useCallback(
+    (lead: Lead) => runLeadAction("/api/leads/research", lead, "Researched", "Research failed"),
+    [runLeadAction],
+  );
+
+  const draftOutreach = useCallback(
+    (lead: Lead) =>
+      runLeadAction("/api/leads/outreach", lead, "Drafted outreach for", "Drafting failed"),
+    [runLeadAction],
+  );
 
   const onStatusChange = useCallback(
     (lead: Lead, status: string) => {
@@ -477,6 +491,7 @@ export function Dashboard({
         onOpenChange={(open) => !open && setSelectedKey(null)}
         onSave={saveLead}
         onResearch={researchLead}
+        onDraft={draftOutreach}
         saving={selected ? pendingKeys.has(selected.key) : false}
       />
     </div>

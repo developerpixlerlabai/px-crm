@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServiceClient } from "@/lib/supabase/service";
+import type { StoredOutreach } from "@/lib/outreach-schema";
 import type { LeadResearch } from "@/lib/research-schema";
 import type { EditableField, Lead, LeadUpdates, LeadsResponse } from "@/lib/types";
 
@@ -42,12 +43,15 @@ type LeadRow = {
   domain: string;
   research: LeadResearch | null;
   researched_at: string | null;
+  outreach: StoredOutreach | null;
+  outreach_drafted_at: string | null;
 };
 
 const COLUMNS =
   "key, date_found, priority, score, company, contact_name, title_role, email, " +
   "signal_source, matched_signals, headline, snippet, source_url, status, notes, " +
-  "outreach_sent, segment, intent, domain, research, researched_at";
+  "outreach_sent, segment, intent, domain, research, researched_at, outreach, " +
+  "outreach_drafted_at";
 
 const EDITABLE_COLUMNS: Record<EditableField, keyof LeadRow> = {
   contactName: "contact_name",
@@ -81,6 +85,8 @@ function toLead(row: LeadRow): Lead {
     domain: row.domain,
     research: row.research,
     researchedAt: row.researched_at ?? "",
+    outreach: row.outreach,
+    outreachDraftedAt: row.outreach_drafted_at ?? "",
   };
 }
 
@@ -219,6 +225,19 @@ export async function saveResearch(lead: Lead, research: LeadResearch, note: str
     .select(COLUMNS)
     .returns<LeadRow[]>();
   if (error) throw new LeadsError(`Could not save the research: ${error.message}`, 502);
+  if (!data.length) throw new LeadsError("Lead not found — it may have been deleted.", 404);
+  return toLead(data[0]);
+}
+
+/** Stores the latest outreach drafts, replacing any earlier ones. */
+export async function saveOutreach(lead: Lead, outreach: StoredOutreach): Promise<Lead> {
+  const { data, error } = await createServiceClient()
+    .from("leads")
+    .update({ outreach, outreach_drafted_at: new Date().toISOString() })
+    .eq("key", lead.key)
+    .select(COLUMNS)
+    .returns<LeadRow[]>();
+  if (error) throw new LeadsError(`Could not save the drafts: ${error.message}`, 502);
   if (!data.length) throw new LeadsError("Lead not found — it may have been deleted.", 404);
   return toLead(data[0]);
 }

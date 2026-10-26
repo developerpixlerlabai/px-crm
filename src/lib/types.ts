@@ -1,3 +1,4 @@
+import type { StoredOutreach } from "@/lib/outreach-schema";
 import type { LeadResearch } from "@/lib/research-schema";
 
 /**
@@ -30,6 +31,10 @@ export type Lead = {
   /** Result of the panel's "Research" button; null until it has been run. */
   research: LeadResearch | null;
   researchedAt: string;
+
+  /** Result of the panel's "Draft outreach" button; null until it has been run. */
+  outreach: StoredOutreach | null;
+  outreachDraftedAt: string;
 };
 
 /**

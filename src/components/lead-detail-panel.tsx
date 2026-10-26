@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ExternalLink, Loader2, Sparkles } from "lucide-react";
+import { Copy, ExternalLink, Loader2, Mail, Sparkles, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
 
 import { PriorityBadge, SegmentBadge } from "@/components/badges";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { formatFullDate, hostOf, splitSignals } from "@/lib/format";
+import type { StoredOutreach } from "@/lib/outreach-schema";
 import { researchVerdict, type LeadResearch } from "@/lib/research-schema";
 import {
   EDITABLE_FIELDS,
@@ -55,6 +57,7 @@ export function LeadDetailPanel({
   onOpenChange,
   onSave,
   onResearch,
+  onDraft,
   saving,
 }: {
   lead: Lead | null;
@@ -62,6 +65,7 @@ export function LeadDetailPanel({
   onOpenChange: (open: boolean) => void;
   onSave: (lead: Lead, updates: LeadUpdates) => Promise<void>;
   onResearch: (lead: Lead) => Promise<Lead | null>;
+  onDraft: (lead: Lead) => Promise<Lead | null>;
   saving: boolean;
 }) {
   return (
@@ -79,6 +83,7 @@ export function LeadDetailPanel({
             onOpenChange={onOpenChange}
             onSave={onSave}
             onResearch={onResearch}
+            onDraft={onDraft}
             saving={saving}
           />
         )}
@@ -92,16 +97,19 @@ function LeadForm({
   onOpenChange,
   onSave,
   onResearch,
+  onDraft,
   saving,
 }: {
   lead: Lead;
   onOpenChange: (open: boolean) => void;
   onSave: (lead: Lead, updates: LeadUpdates) => Promise<void>;
   onResearch: (lead: Lead) => Promise<Lead | null>;
+  onDraft: (lead: Lead) => Promise<Lead | null>;
   saving: boolean;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFrom(lead));
   const [researching, setResearching] = useState(false);
+  const [drafting, setDrafting] = useState(false);
 
   // Compared against the live lead, so a successful save (which updates the
   // lead in place) flips this back to "no changes" on its own.
@@ -124,6 +132,12 @@ function LeadForm({
   async function handleSave() {
     if (!hasChanges) return;
     await onSave(lead, dirty);
+  }
+
+  async function handleDraft() {
+    setDrafting(true);
+    await onDraft(lead);
+    setDrafting(false);
   }
 
   async function handleResearch() {
@@ -262,6 +276,35 @@ function LeadForm({
               : lead.research
                 ? "Research again"
                 : "Research this company"}
+          </Button>
+        </Section>
+
+        <Separator />
+
+        <Section title="Outreach">
+          {lead.outreach ? (
+            <OutreachCard outreach={lead.outreach} draftedAt={lead.outreachDraftedAt} />
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              {lead.research
+                ? "Draft a first email, a LinkedIn note and three follow-ups from the research. Nothing is sent — copy what you want to use."
+                : "Research the company first: the drafts are built on it."}
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            onClick={handleDraft}
+            disabled={drafting || researching || !lead.research}
+          >
+            {drafting ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
+            {drafting
+              ? "Drafting…"
+              : lead.outreach
+                ? "Draft again"
+                : "Draft outreach"}
           </Button>
         </Section>
 
@@ -512,6 +555,90 @@ function ResearchCard({
           Researched {formatFullDate(researchedAt)} · no email is looked up or guessed
         </p>
       )}
+    </div>
+  );
+}
+
+function OutreachCard({ outreach: o, draftedAt }: { outreach: StoredOutreach; draftedAt: string }) {
+  return (
+    <div className="space-y-4">
+      {(o.warnings.length > 0 || o.compliance_flags.length > 0) && (
+        <ul className="space-y-1 text-sm">
+          {[...o.compliance_flags, ...o.warnings].map((note) => (
+            <li key={note} className="flex gap-2 text-amber-700 dark:text-amber-400">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+              {note}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <DraftBlock
+        label="Email"
+        meta={o.case_study ? `proof: ${o.case_study}` : "no case study fit"}
+        subject={o.email.subject}
+        body={o.email.body}
+      />
+      <DraftBlock
+        label="LinkedIn note"
+        meta={`${o.linkedin_note.length}/280 characters`}
+        body={o.linkedin_note}
+      />
+      {o.follow_ups.map((f) => (
+        <DraftBlock
+          key={f.day}
+          label={`Follow-up · day ${f.day}`}
+          meta={f.adds}
+          subject={f.subject}
+          body={f.body}
+        />
+      ))}
+
+      {draftedAt && (
+        <p className="text-muted-foreground text-xs">
+          Drafted {formatFullDate(draftedAt)} · nothing is sent from the CRM
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DraftBlock({
+  label,
+  meta,
+  subject,
+  body,
+}: {
+  label: string;
+  meta?: string;
+  subject?: string;
+  body: string;
+}) {
+  const text = subject ? `Subject: ${subject}\n\n${body}` : body;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error("Could not copy — select the text instead.");
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{label}</p>
+          {meta && <p className="text-muted-foreground text-xs">{meta}</p>}
+        </div>
+        <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={copy}>
+          <Copy className="size-3.5" />
+          Copy
+        </Button>
+      </div>
+      {subject && <p className="text-sm font-medium">{subject}</p>}
+      <p className="text-sm leading-relaxed whitespace-pre-line">{body}</p>
     </div>
   );
 }

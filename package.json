@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'src/lib/scraper/test/*.test.ts'",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'src/**/*.test.ts'",
     "scrape:audit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/scrape-audit.ts"
   },
   "dependencies": {
