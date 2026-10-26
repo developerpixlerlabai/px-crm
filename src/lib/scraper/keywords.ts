@@ -556,3 +556,126 @@ export const DESCRIPTOR_WORDS = [
 
 // Query params that carry no identity — safe to drop before comparing URLs.
 export const TRACKING_PARAMS = /^(utm_\w*|oc|ct|cd|usg|rct|sa|ved|ei|gclid|fbclid|mc_cid|mc_eid|ref|referrer|source|campaign|amp)$/i;
+
+
+// ════════════════════════════════════════════════════════════════
+//  JOB POSTINGS AS BUYING SIGNALS
+//  A posting is evidence that a company needs engineering capacity — not a
+//  job we would apply for. So geography is no longer a gate (a US startup that
+//  hires "Remote (US only)" can still contract an agency in India); what
+//  matters is whether the company is the kind that buys from one: funded,
+//  early-stage, 2–300 people, in a priority market, and not a competitor.
+//
+//  Measured 2026-10-26: the old "can we take this job from India?" gate
+//  dropped 92 of 128 HN posts and 40 of 52 Jobicy posts — including Estuary
+//  (Series A), HiO (seed) and a dozen other US startups — while keeping
+//  "Anywhere in the World" WWR posts from DuckDuckGo, Affirm, Squarespace,
+//  Vercel and Reddit, all of which scored 8–10.
+// ════════════════════════════════════════════════════════════════
+
+/** Stage signals that mark an early company. Any one lifts the score cap. */
+export const STARTUP_SIGNAL_RE = new RegExp(
+  "\\b(" + [
+    "pre-?seed", "seed[- ](?:round|stage|funded|funding)", "series a",
+    "founding (?:engineer|developer|team|member|hire)", "first (?:engineer|engineering hire|hire|technical hire)",
+    "early[- ]stage", "y ?combinator", "\\(yc\\b", "yc [swfx]\\d{2}", "yc-backed",
+    "team of (?:\\d|two|three|four|five|six|seven|eight|nine|ten)\\b",
+    "\\d{1,2}[- ](?:person|people|employee) (?:team|company|startup)",
+    "small team", "venture[- ]backed", "just raised", "recently raised",
+  ].join("|") + ")",
+  "i",
+);
+
+/**
+ * Signals of a mature organisation, in the TITLE. Levelled ladders
+ * ("Engineer II", "Machine Learning Engineer - IV") and requisition ids
+ * ("(R13923)") are how large companies' ATSs write titles; a 10-person
+ * startup does neither.
+ */
+export const LARGE_COMPANY_TITLE_RE =
+  /\b(?:engineer|developer|scientist|analyst|architect)\s*(?:-\s*)?(?:i{2,3}|iv|v|vi|[2-6])\b|\(\s*r\d{3,}\s*\)|\breq(?:uisition)?[-\s#]*\d{3,}|\b(?:distinguished|director|vice president|vp)\b/i;
+
+/**
+ * Weaker title signal: Staff/Principal ladders exist at 100-person companies
+ * too ("Staff Full-Stack Engineer" at Propel Labs), so these cost a point
+ * rather than four.
+ */
+export const SENIOR_LADDER_TITLE_RE = /\b(?:staff|principal|senior staff)\b/i;
+
+/** Mature-organisation signals in the posting body. */
+export const LARGE_COMPANY_TEXT_RE = new RegExp(
+  "\\b(" + [
+    "fortune (?:100|500)", "publicly traded", "public company", "nasdaq", "nyse",
+    "\\d{1,3}(?:,\\d{3})\\+? employees", "thousands of employees",
+    "\\d{2,3}\\+? countries", "global (?:offices|workforce)",
+  ].join("|") + ")",
+  "i",
+);
+
+/**
+ * Companies too large to buy agency capacity, seen in the job feeds. Matched
+ * on the normalized company name. A list, not a rule, so add to it when a
+ * big brand gets through — the stage signals above catch most of the rest.
+ */
+export const LARGE_COMPANIES = [
+  "affirm", "airbnb", "amazon", "apple", "atlassian", "automattic", "binance",
+  "canonical", "circleci", "cloudflare", "coinbase", "datadog", "doordash",
+  "dropbox", "duckduckgo", "elastic", "elevenlabs", "github", "gitlab", "google",
+  "hashicorp", "hubspot", "jumio", "lattice", "meta", "microsoft", "mongodb",
+  "netflix", "notion", "okta", "oportun", "planetscale", "reddit", "salesforce",
+  "shopify", "slack", "sourcegraph", "spotify", "squarespace", "stripe",
+  "supabase", "tether", "twilio", "typeform", "uber", "vercel", "zapier", "zoom",
+];
+
+/**
+ * Competitors and gig marketplaces. Staffing and outsourcing firms sell what
+ * we sell; data-labelling platforms hire "AI trainers", which is piecework,
+ * not engineering budget. Matched on the normalized company name.
+ */
+export const COMPETITOR_COMPANIES = [
+  // Staffing, talent marketplaces, outsourced development
+  "toptal", "turing", "andela", "lemonio", "proxify", "proxifyab", "bairesdev",
+  "crossover", "xteam", "gunio", "arcdev", "braintrust", "upwork", "fiverr",
+  "revelo", "scalablepath", "terminal", "hired", "interviewresources",
+  "growthminded", "irashtech", "startuphakk",
+  // AI data labelling / "AI trainer" piecework
+  "imerit", "imerittechnology", "outlier", "dataannotation", "remotasks",
+  "appen", "telusinternational", "mercor", "alignerr", "invisibletechnologies",
+  "surgeai", "scaleai", "askable",
+];
+
+/** The same, from the company name or posting wording rather than a list. */
+export const COMPETITOR_NAME_RE = /\b(?:staffing|recruit(?:ing|ment|ers)?|talent|outsourc\w*|consult(?:ing|ancy|ants))\b/i;
+// Phrases only a recruiter or a labelling platform writes. Deliberately NOT
+// "for our clients" — B2B SaaS postings say that about their own customers.
+export const COMPETITOR_TEXT_RE =
+  /\b(?:on behalf of (?:our|a) client|our client is|ai trainers?|data annotation|annotators?|annotation tasks|labell?ing tasks|freelance network|talent network)\b/i;
+
+/** Roles that are not engineering work, checked on the role/title. */
+export const NON_ENGINEERING_ROLE_RE =
+  /\b(?:product (?:manager|specialist|owner|marketing)|pm\b|marketing|growth|sales|business development|account (?:executive|manager)|customer (?:success|support)|support (?:specialist|agent)|recruit(?:er|ing)|talent|hr\b|people (?:ops|partner)|finance|accountant|legal|counsel|operations manager|community manager|content (?:writer|strategist)|copywriter)\b/i;
+
+/** ...unless the same role also names engineering work ("Growth Engineer"). */
+export const ENGINEERING_ROLE_RE =
+  /\b(?:engineer|engineering|developer|dev|programmer|architect|sre|devops|scientist|ml|ai|data|full[\s-]?stack|front[\s-]?end|back[\s-]?end|mobile|ios|android)\b/i;
+
+/**
+ * PixlerLab's priority markets (US, UK, UAE, Australia), read from a job's
+ * location text. "US"/"USA"/"U.S." are matched case-SENSITIVELY — lowercase
+ * "us" is everywhere in prose ("join us").
+ */
+export const PRIORITY_MARKET_CASED_RE = new RegExp(
+  "\\b(?:US|USA|UK|UAE)\\b|\\bU\\.S\\.(?:A\\.)?|\\bU\\.K\\." +
+    // "Austin, TX" — a capitalised city, then a US state code
+    "|\\b[A-Z][a-z]+(?: [A-Z][a-z]+)?, (?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\\b",
+);
+export const PRIORITY_MARKET_RE = new RegExp(
+  "\\b(" + [
+    "united states", "north america", "(?<!latin |south |central )america", "united kingdom", "england",
+    "scotland", "london", "manchester", "emirates", "dubai", "abu dhabi",
+    "australia", "sydney", "melbourne", "brisbane", "perth",
+    "new york", "nyc", "san francisco", "bay area", "silicon valley", "seattle",
+    "boston", "austin", "chicago", "los angeles", "denver", "miami", "atlanta",
+  ].join("|") + ")\\b",
+  "i",
+);

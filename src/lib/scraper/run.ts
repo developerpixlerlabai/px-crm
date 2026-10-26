@@ -10,7 +10,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 
 import { CONFIG } from "./config.ts";
 import { buildDigest } from "./digest.ts";
-import { applySegmentQuota, evaluate, scoreLabel, statDetail } from "./evaluate.ts";
+import { applySegmentQuota, companyKeyOf, evaluate, scoreLabel, statDetail } from "./evaluate.ts";
 import { collectAll } from "./sources.ts";
 import { fingerprint, normalizeUrl, parseDate } from "./text.ts";
 import type { Candidate, Quota, SourceStat } from "./types.ts";
@@ -78,7 +78,7 @@ async function scrape(supabase: SupabaseClient, dryRun: boolean): Promise<RunSum
     const fp = item.kind === "job" ? "" : fingerprint(item.title);
     if (fp && seen.prints.has(fp)) continue;
 
-    const verdict = evaluate(item);
+    const verdict = evaluate(item, { fundedCompanies: seen.funded });
     if (!verdict.keep) continue;
 
     // Company-level dedupe — the same event covered by several outlets
@@ -141,34 +141,53 @@ async function scrape(supabase: SupabaseClient, dryRun: boolean): Promise<RunSum
  * The company key is the one that matters in practice: one funding round gets
  * four publications, four headlines and four redirect URLs. A live test
  * produced "Superleap" 4x in one run before it existed.
+ *
+ * Also returns `funded`: companies whose funding news we saved within
+ * FUNDED_LOOKBACK_DAYS. A job posting from one of them is the strongest
+ * signal the system has — new money, now spending it on engineering.
  */
 async function getSeenKeys(supabase: SupabaseClient) {
-  const keys = { urls: new Set<string>(), prints: new Set<string>(), companies: new Set<string>() };
+  const keys = {
+    urls: new Set<string>(),
+    prints: new Set<string>(),
+    companies: new Set<string>(),
+    funded: new Set<string>(),
+  };
   const cutoff =
     CONFIG.COMPANY_DEDUPE_DAYS > 0
       ? new Date(Date.now() - CONFIG.COMPANY_DEDUPE_DAYS * 86400000)
       : null;
+  const fundedCutoff = new Date(Date.now() - CONFIG.FUNDED_LOOKBACK_DAYS * 86400000);
 
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from("leads")
-      .select("date_found, company, headline, source_url")
+      .select("date_found, company, headline, source_url, matched_signals")
       .order("seq", { ascending: true })
       .range(from, from + PAGE - 1)
-      .returns<Array<{ date_found: string | null; company: string; headline: string; source_url: string }>>();
+      .returns<
+        Array<{
+          date_found: string | null;
+          company: string;
+          headline: string;
+          source_url: string;
+          matched_signals: string;
+        }>
+      >();
     if (error) throw new Error(`Could not read existing leads: ${error.message}`);
 
     for (const row of data) {
       if (row.source_url) keys.urls.add(normalizeUrl(row.source_url));
       if (row.headline) keys.prints.add(fingerprint(row.headline));
 
-      if (cutoff && row.company) {
-        const found = parseDate(row.date_found);
-        if (!found || found >= cutoff) {
-          const ck = row.company.toLowerCase().replace(/[^a-z0-9]/g, "");
-          if (ck && ck.indexOf("extractmanually") === -1) keys.companies.add(ck);
-        }
+      const ck = companyKeyOf(row.company);
+      if (!ck || ck.indexOf("extractmanually") !== -1) continue;
+      const found = parseDate(row.date_found);
+
+      if (cutoff && (!found || found >= cutoff)) keys.companies.add(ck);
+      if (found && found >= fundedCutoff && /\bFunding\b/.test(row.matched_signals)) {
+        keys.funded.add(ck);
       }
     }
     if (data.length < PAGE) break;

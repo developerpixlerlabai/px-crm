@@ -11,6 +11,7 @@ import { extractCompanyName, isRealCompany } from "../company.ts";
 import { CONFIG } from "../config.ts";
 import { buildDigest } from "../digest.ts";
 import { applySegmentQuota, evaluate, jobReach } from "../evaluate.ts";
+import { PRIORITY_MARKET_CASED_RE, PRIORITY_MARKET_RE } from "../keywords.ts";
 import { parseAtomText, parseRss2Text, parseWwrText } from "../sources.ts";
 import { cleanText, hasKeyword, isGenericHost, normalizeUrl } from "../text.ts";
 import type { Candidate, Item } from "../types.ts";
@@ -68,13 +69,15 @@ test("WeWorkRemotely: company, role, region and the employer's own domain", () =
   assert.ok(items.every((w) => !/&lt;|<p>/.test(w.snippet)));
   assert.ok(!items.some((w) => /Counsel|Regulatory/i.test(w.role ?? "")));
 
-  // The region field decides, and differently per row. Dated today so the
-  // fixture's age cannot fail the recency gate.
+  // A remote-board posting with no stage evidence is dropped whatever its
+  // region — region no longer decides, the company's stage does.
   const fresh = (w: Item) => ({ ...w, publishedAt: new Date() });
+  assert.deepEqual(evaluate(fresh(mule)), { keep: false, reason: "no stage evidence" });
+
+  // The fixture's "Asia Only" posting is Toptal's: a competitor, whatever its region.
   const asia = items.find((w) => w.locationField === "Asia Only");
-  const na = items.find((w) => w.locationField === "North America Only");
-  assert.ok(asia && evaluate(fresh(asia)).keep, '"Asia Only" includes India');
-  assert.ok(na && !evaluate(fresh(na)).keep, '"North America Only" does not');
+  assert.ok(asia);
+  assert.match(String(evaluate(fresh(asia)).reason), /^competitor/);
 });
 
 test("normalizeUrl keeps identity params and drops tracking ones", () => {
@@ -181,4 +184,79 @@ test("digest HTML stays email-safe", () => {
   assert.ok(!/display\s*:\s*flex/.test(html), "Gmail strips flexbox");
   assert.ok(![...html].some((c) => (c.codePointAt(0) ?? 0) > 0xffff), "no astral emoji");
   assert.match(subject, /1 new/);
+});
+
+// ── Job postings as buying signals ───────────────────────────
+
+const job = (company: string, role: string, extra: Partial<Item> = {}): Item => ({
+  kind: "job",
+  title: `${role} at ${company}`,
+  role,
+  snippet: "",
+  url: "https://news.ycombinator.com/item?id=" + encodeURIComponent(company + role),
+  publishedAt: new Date(),
+  sourceLabel: "HN Who is hiring",
+  segmentHint: "saas",
+  company,
+  contactTitle: "Hiring Manager",
+  publisher: "Hacker News",
+  domain: company.toLowerCase().replace(/\W/g, "") + ".com",
+  locationHint: "",
+  locationField: "",
+  ...extra,
+});
+
+test("a US-only startup posting is a lead, not a job we cannot take", () => {
+  // The v3 reach gate dropped exactly this: Estuary, Series A, US-based.
+  const v = evaluate(
+    job("Estuary", "Senior Software Engineer", {
+      locationHint: "Estuary | US-Based / Remote | Full-time",
+      snippet: "We just closed our Series A and are hiring engineers.",
+    }),
+  );
+  assert.ok(v.keep, JSON.stringify(v));
+  assert.ok(v.score >= 8, `score ${v.score}`);
+  assert.match(v.intents, /Early-stage/);
+});
+
+test("competitors, labelling gigs and non-engineering roles are rejected", () => {
+  assert.match(String(evaluate(job("Toptal", "Full-Stack Developer")).reason), /^competitor/);
+  assert.match(String(evaluate(job("Proxify AB", "Senior Backend Developer")).reason), /^competitor/);
+  assert.match(
+    String(evaluate(job("iMerit Technology", "AI Trainer - Video Annotation")).reason),
+    /^competitor/,
+  );
+  assert.match(String(evaluate(job("Acme Staffing", "React Developer")).reason), /^competitor/);
+  assert.equal(evaluate(job("HiO", "Growth Marketing Manager")).reason, "not an engineering role");
+  assert.ok(evaluate(job("HiO", "Growth Engineer")).keep, "engineering roles in growth still count");
+});
+
+test("big brands are rejected or scored down, never Hot without stage evidence", () => {
+  assert.match(String(evaluate(job("DuckDuckGo", "Senior Backend Engineer")).reason), /^large company/);
+
+  // No stage evidence on HN: kept, but capped at Warm.
+  const plain = evaluate(job("Lithic", "Senior Software Engineer"));
+  assert.ok(plain.keep && plain.score <= 7, JSON.stringify(plain));
+
+  // Levelled titles and requisition ids are an ATS's fingerprint.
+  const ladder = evaluate(job("Acme Corp", "Analytics Engineer II (R13923)"));
+  assert.ok(!ladder.keep || ladder.score < plain.score, JSON.stringify(ladder));
+});
+
+test("recent funding news lifts a job posting and labels it", () => {
+  const funded = new Set(["coast"]);
+  const v = evaluate(job("Coast", "Senior Backend Engineer"), { fundedCompanies: funded });
+  assert.ok(v.keep);
+  assert.match(v.intents, /Recently Funded/);
+  assert.ok(v.score > 7, "funding lifts the no-stage cap");
+});
+
+test("priority markets: US/UK/UAE/Australia, without matching prose", () => {
+  const inMarket = (s: string) => PRIORITY_MARKET_CASED_RE.test(s) || PRIORITY_MARKET_RE.test(s);
+  for (const s of ["Remote (US only)", "Austin, TX", "U.S. Eastern", "London", "Dubai, UAE", "North America Only"]) {
+    assert.ok(inMarket(s), s);
+  }
+  for (const s of ["Latin America", "join us remotely", "teams, in", "Berlin", "USB drivers"]) {
+    assert.ok(!inMarket(s), s);
+  }
 });

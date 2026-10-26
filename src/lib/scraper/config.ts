@@ -202,12 +202,36 @@ export const CONFIG = {
   //     2026-09-02. Set to "us" to restore v2 exactly; NON_US_HARD and
   //     US_MARKERS are still here and come back to life when you do.
   //
-  //   REQUIRE_REMOTE_JOB — a posting only counts if we could staff it from
-  //     India: remote, and not fenced to a region that excludes us.
-  //     "Remote (US only)" is a genuine remote job we still cannot win, and
-  //     so is "Americas, Europe, Israel".
+  //   REQUIRE_REMOTE_JOB — OFF since 2026-10-26. It treated a posting as a
+  //     job we would apply for ("could we staff this from India?"), but a
+  //     posting is a BUYING signal: a US startup hiring "Remote (US only)"
+  //     can still contract an agency. The gate dropped 92 of 128 HN posts —
+  //     mostly US startups — and kept "Anywhere in the World" posts from big
+  //     remote-first brands. Priority markets now earn JOB_MARKET_BONUS
+  //     instead. Set true to restore the v3 gate exactly.
   NEWS_GEO: "global",
-  REQUIRE_REMOTE_JOB: true,
+  REQUIRE_REMOTE_JOB: false,
+
+  // ── JOB POSTINGS: WHO BUYS FROM AN AGENCY ───────────────────
+  // The ICP is 2–300 people, funded, in the US/UK/UAE/Australia. Postings
+  // carry no headcount, so stage is read from the posting itself (see
+  // STARTUP_SIGNAL_RE and LARGE_COMPANY_* in keywords.ts).
+  JOB_STARTUP_BONUS: 2,        // seed / Series A / founding engineer / YC / "team of 8"
+  JOB_FUNDED_BONUS: 2,         // the company was in our funding news recently
+  FUNDED_LOOKBACK_DAYS: 180,   // ...within this many days
+  JOB_MARKET_BONUS: 1,         // US / UK / UAE / Australia
+  JOB_LARGE_PENALTY: 4,        // levelled titles, requisition ids, "Fortune 500"
+  JOB_LADDER_PENALTY: 1,       // Staff / Principal — common at 100-person companies too
+  // A posting with no stage evidence at all tops out at Warm. Before this,
+  // every job scored 8–10 from "named company + website + recent" alone,
+  // which is exactly the profile of a big brand.
+  JOB_MAX_SCORE_WITHOUT_STAGE: 7,
+  // ...and on these boards a posting with no stage evidence is dropped
+  // outright. Measured 2026-10-26: with only the cap, WWR and Jobicy still
+  // filled their slots with Discord, Mozilla, ClickUp, FanDuel, Monzo and
+  // Webflow at Warm. HN is left out on purpose: its posters are mostly
+  // startups even when they don't say so.
+  JOB_STAGE_REQUIRED_PUBLISHERS: ["WeWorkRemotely", "Jobicy", "Remotive"],
 
   // ── JOB BOARD SOURCES ───────────────────────────────────────
   // The best sources in the system: a job posting is an explicit budget

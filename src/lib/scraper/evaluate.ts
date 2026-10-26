@@ -1,18 +1,30 @@
 import { extractCompanyName, isRealCompany } from "./company.ts";
 import { CONFIG } from "./config.ts";
 import {
+  COMPETITOR_COMPANIES,
+  COMPETITOR_NAME_RE,
+  COMPETITOR_TEXT_RE,
   DISQUALIFY,
+  ENGINEERING_ROLE_RE,
   INTENT_GROUPS,
   JOB_FENCED_RE,
   JOB_OPEN_RE,
   JOB_POSTING_INTENT,
   JOB_REMOTE_RE,
+  LARGE_COMPANIES,
+  LARGE_COMPANY_TEXT_RE,
+  LARGE_COMPANY_TITLE_RE,
+  NON_ENGINEERING_ROLE_RE,
   NON_US_HARD,
   NON_US_SOFT,
   OUTREACH_ANGLES,
   PENALTIES,
+  PRIORITY_MARKET_CASED_RE,
+  PRIORITY_MARKET_RE,
   REGION_INCLUDES_INDIA,
   SEGMENT_KEYWORDS,
+  SENIOR_LADDER_TITLE_RE,
+  STARTUP_SIGNAL_RE,
   STOCK_PUBLISHERS,
   TECHNOLOGIES,
   US_MARKERS,
@@ -22,6 +34,24 @@ import { findKeyword, hasKeyword } from "./text.ts";
 import type { Candidate, Item, Quota, Rejection, SourceStat, Verdict } from "./types.ts";
 
 export type Reach = "open" | "unclear" | "fenced" | "onsite";
+
+export type EvaluateContext = {
+  /** companyKeys that appeared in our funding news recently (run.ts). */
+  fundedCompanies?: Set<string>;
+};
+
+/** The company-level key used for dedupe and every company list. */
+export function companyKeyOf(name: string): string {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Matches a company against a list, ignoring a legal or brand suffix. */
+function onCompanyList(name: string, list: string[]): boolean {
+  const key = companyKeyOf(name);
+  if (!key) return false;
+  const stripped = key.replace(/(?:inc|llc|ltd|ab|gmbh|corp|technologies|technology|hq)$/, "");
+  return list.includes(key) || list.includes(stripped);
+}
 
 /**
  * How far does this job posting reach — can Pixler Lab take it on from India?
@@ -67,7 +97,7 @@ export function jobReach(freeText: string, structured: string | undefined): Reac
  * competitor's blog post ("Your Healthcare AI Strategy Has a Data Problem")
  * scored 6+ on vertical keywords alone and was saved as a lead.
  */
-export function evaluate(item: Item): Verdict | Rejection {
+export function evaluate(item: Item, context: EvaluateContext = {}): Verdict | Rejection {
   const isJob = item.kind === "job";
   const text = (item.title + " " + item.snippet).toLowerCase();
   const stat = item.stat;
@@ -118,6 +148,26 @@ export function evaluate(item: Item): Verdict | Rejection {
   const badBuyer = findKeyword(buyerText, WRONG_BUYER);
   if (badBuyer) return reject("wrong buyer: " + badBuyer.trim());
 
+  // 3b. Jobs: would this company buy from an agency at all? Competitors and
+  //     labelling platforms sell what we sell; big brands staff in-house.
+  const roleText = item.role || item.title;
+  if (isJob) {
+    const body = item.title + " " + item.snippet;
+    if (
+      onCompanyList(item.company, COMPETITOR_COMPANIES) ||
+      COMPETITOR_NAME_RE.test(item.company) ||
+      COMPETITOR_TEXT_RE.test(body)
+    ) {
+      return reject("competitor or gig work: " + (item.company || "unnamed"));
+    }
+    if (NON_ENGINEERING_ROLE_RE.test(roleText) && !ENGINEERING_ROLE_RE.test(roleText)) {
+      return reject("not an engineering role");
+    }
+    if (onCompanyList(item.company, LARGE_COMPANIES)) {
+      return reject("large company: " + item.company);
+    }
+  }
+
   // 4. Content-type noise — NEWS ONLY. "university", "how to" and "vs." are
   //    everywhere in job descriptions; applied to jobs this rejected all of them.
   if (!isJob) {
@@ -157,8 +207,8 @@ export function evaluate(item: Item): Verdict | Rejection {
   if (isRealCompany(company)) score += 2;
   if (item.domain) score += 1; // we already have their website
   if (ageDays !== null && ageDays <= 3) score += 1;
-  // A posting that names India (or the whole world) beats a bare "Remote".
-  if (reach === "open") score += 1;
+  // Under the v3 reach gate, a posting that names India beat a bare "Remote".
+  if (CONFIG.REQUIRE_REMOTE_JOB && reach === "open") score += 1;
   if (CONFIG.NEWS_GEO === "us" && !isJob && US_MARKERS.some((k) => hasKeyword(text, k))) {
     score += 1;
   }
@@ -171,6 +221,42 @@ export function evaluate(item: Item): Verdict | Rejection {
     if (p.kw.some((k) => hasKeyword(text, k))) score += p.points;
   });
 
+  // 9. Jobs: stage and market. A posting carries no headcount, so read the
+  //    company's stage from the posting itself, and cap anything without
+  //    stage evidence at Warm — "named company + website + recent" alone is
+  //    exactly the profile of a big brand.
+  const labels: string[] = [];
+  if (isJob) {
+    const body = item.title + " " + item.snippet;
+    const location = item.title + " " + (item.locationHint || "") + " " + (item.locationField || "");
+    const startup = STARTUP_SIGNAL_RE.test(body);
+    const key = isRealCompany(company) ? companyKeyOf(company) : "";
+    const funded = Boolean(key && context.fundedCompanies?.has(key));
+
+    if (startup) {
+      score += CONFIG.JOB_STARTUP_BONUS;
+      labels.push("Early-stage");
+    }
+    if (funded) {
+      score += CONFIG.JOB_FUNDED_BONUS;
+      labels.push("Recently Funded");
+    }
+    if (LARGE_COMPANY_TITLE_RE.test(roleText) || LARGE_COMPANY_TEXT_RE.test(body)) {
+      score -= CONFIG.JOB_LARGE_PENALTY;
+    } else if (SENIOR_LADDER_TITLE_RE.test(roleText)) {
+      score -= CONFIG.JOB_LADDER_PENALTY;
+    }
+    if (PRIORITY_MARKET_CASED_RE.test(location) || PRIORITY_MARKET_RE.test(location)) {
+      score += CONFIG.JOB_MARKET_BONUS;
+    }
+    if (!startup && !funded) {
+      if (CONFIG.JOB_STAGE_REQUIRED_PUBLISHERS.includes(item.publisher)) {
+        return reject("no stage evidence");
+      }
+      score = Math.min(score, CONFIG.JOB_MAX_SCORE_WITHOUT_STAGE);
+    }
+  }
+
   score = Math.max(0, Math.min(10, score));
   if (score < CONFIG.MIN_SCORE) return reject("score " + score);
 
@@ -181,7 +267,7 @@ export function evaluate(item: Item): Verdict | Rejection {
 
   // Derived AFTER the lead has earned its place; none of these score.
   // Technology reads the role too: a WWR title is "Company: Role".
-  const intents = fired.map((g) => g.key).join(", ");
+  const intents = [...fired.map((g) => g.key), ...labels].join(", ");
   const technologies = detectTechnology(text + " " + String(item.role || "").toLowerCase());
 
   return {
@@ -195,7 +281,7 @@ export function evaluate(item: Item): Verdict | Rejection {
     company: displayCompany,
     // Empty when we couldn't name the company, so unnamed leads never collapse
     // into each other.
-    companyKey: resolved ? resolved.toLowerCase().replace(/[^a-z0-9]/g, "") : "",
+    companyKey: resolved ? companyKeyOf(resolved) : "",
     reason: "ok",
   };
 }

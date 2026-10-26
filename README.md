@@ -75,6 +75,12 @@ headlines — with zero differences.
 | `npm run scrape:audit` | local, no server or DB: per-source health and service mix (`-- --items` for every item) |
 | `npm test` | offline regression suite against `src/lib/scraper/test/fixtures/` |
 
+Job postings are scored as **buying signals**, not jobs to apply for: there is
+no geography gate, competitors and labelling gigs are rejected, big brands are
+rejected or capped at Warm, and startup / recent-funding evidence lifts a
+posting. The knobs are the `JOB_*` values in `config.ts`; the lists
+(`LARGE_COMPANIES`, `COMPETITOR_COMPANIES`, …) are in `keywords.ts`.
+
 Both routes need `Authorization: Bearer $CRON_SECRET`; `/api/cron/*` is exempt
 from the login wall for that reason.
 
