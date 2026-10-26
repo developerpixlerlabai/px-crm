@@ -1,105 +1,117 @@
 # Sales CRM — intent leads dashboard
 
-A Next.js dashboard over the leads that `AS/Code.gs` (the intent-signal scraper)
-writes into the **Leads** tab of the spreadsheet each morning.
+A Next.js CRM over the intent leads its scraper finds each morning.
 
-The sheet stays the source of truth. This app reads it and writes back to it —
-nothing is duplicated into a second database.
+Leads live in **Supabase Postgres** (`public.leads`). The scraper
+(`src/lib/scraper/`) is a TypeScript port of the old Apps Script
+`google-app-script/Code.gs`; a scheduled GitHub Action calls it once a day.
 
 ```
-Google News / HN / alerts
+Google News / HN / WWR / Remotive / Jobicy / alerts
         │
         ▼
-   Code.gs  (daily 8am trigger)
-        │  appends rows A–R
+GitHub Actions (02:30 UTC = 08:00 IST)
+        │  GET /api/cron/scrape   (Bearer CRON_SECRET)
         ▼
-  Leads sheet ◄──────────────┐
-        │                    │ writes (status, notes, contact)
-        │ reads              │
-        ▼                    │
-   Api.gs  (web app, JSON) ──┘
-        │  token-authenticated
-        ▼
-  Next.js route handlers  ──►  Dashboard (React)
+src/lib/scraper  ── score, dedupe, quota ──►  public.leads
+        │                                     public.scrape_runs (run log)
+        └──►  digest email, via a Gmail mailbox connected in the CRM
+                                          │
+                        Next.js route handlers  ──►  Dashboard (React)
 ```
 
-The Apps Script token lives only in the Next.js server process. The browser
-talks to `/api/leads`, never to Google directly.
+The service key lives only in the Next.js server process. The browser talks to
+`/api/leads`, never to Supabase directly, and every table has RLS on with no
+policies.
 
 ---
 
 ## Setup
 
-### 1. Add the API to your Apps Script project
+### 1. Create the tables
 
-Open the spreadsheet → **Extensions → Apps Script**. Add a second script file
-(**Files → + → Script**), name it `Api`, and paste in the contents of
-`../px-sales/AS/Api.gs`. Save.
+In the Supabase SQL editor, run every file in `supabase/migrations/` in order.
+`0003_leads.sql` creates `public.leads`, `0004_scrape_runs.sql` the run log.
 
-`Code.gs` is untouched — `Api.gs` only reads `CONFIG` and `LEAD_HEADERS` from it.
-
-### 2. Generate the shared secret
-
-Pick `setupApi` in the Run dropdown and run it. Authorise when prompted, then
-open **View → Logs** and copy the line that reads:
-
-```
-SHEETS_API_TOKEN=abc123...
-```
-
-### 3. Deploy as a web app
-
-**Deploy → New deployment → type: Web app**
-
-| Setting         | Value    |
-| --------------- | -------- |
-| Execute as      | Me       |
-| Who has access  | Anyone   |
-
-"Anyone" is required for a server-to-server call, and is safe here because every
-request must carry the token from step 2 — without it the API returns 401.
-
-Copy the `/exec` URL.
-
-> After any future edit to `Api.gs` you must redeploy
-> (**Deploy → Manage deployments → ✏️ → Version: New version**), otherwise the
-> live URL keeps serving the old code.
-
-### 4. Configure and run
+### 2. Configure and run
 
 ```bash
 cp .env.example .env.local   # already done if .env.local exists
 ```
 
 ```dotenv
-SHEETS_API_URL=https://script.google.com/macros/s/AKfy.../exec
-SHEETS_API_TOKEN=abc123...
-NEXT_PUBLIC_SHEET_URL=https://docs.google.com/spreadsheets/d/1fdygmk.../edit
+NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_...
 ```
-
-`NEXT_PUBLIC_SHEET_URL` is only the href of the "Open sheet" button. No data
-flows through it — the two `SHEETS_API_*` values are what reach the sheet.
 
 ```bash
 npm run dev
 ```
 
 Open http://localhost:3000. If the credentials are missing or wrong, the page
-shows these setup steps instead of an empty table.
+shows setup steps instead of an empty table.
 
-### Developing against a scratch tab
+### 3. Import the existing leads
 
-To build against throwaway data — so collaborators never see real leads — add
-an optional `SHEETS_TAB` and restart:
+The import reads the sheet through the old Apps Script web app (`Api.gs`), so
+keep its credentials in `.env.local` for now:
 
 ```dotenv
-SHEETS_TAB="Copy of Leads"
+SHEETS_API_URL=https://script.google.com/macros/s/AKfy.../exec
+SHEETS_API_TOKEN=abc123...
+# SHEETS_TAB="Copy of Leads"   # optional: import a different tab
 ```
 
-The dashboard then reads *and writes* that tab, while `Code.gs` keeps appending
-real leads to the live `Leads` tab on its usual schedule. Delete the line and
-restart to go back to live data; nothing else changes. Requires the `tab`
-support added to `Api.gs` — redeploy it with **Version: New version** first.
+```bash
+npm run import:sheet
+```
+
+It is insert-only: leads already in Supabase are skipped, never overwritten, so
+re-running it after each morning's scrape brings new leads across without
+touching statuses or notes edited in the dashboard. Edits made in the sheet
+after a lead was imported do not come across. `Api.gs` only exposes columns
+A–R, so Technology / Service Opportunity / Recommended Outreach arrive empty.
+
+---
+
+## The scraper
+
+`src/lib/scraper/` is `Code.gs` ported to TypeScript: the same sources, keyword
+lists, scoring, dedupe and quota. Tuning lives in `config.ts` (sources,
+thresholds) and `keywords.ts` (every scoring list); their comments record what
+was measured and why each value is what it is. The port was checked against
+`Code.gs` on identical inputs — 1,370 live items and all 2,811 stored
+headlines — with zero differences.
+
+| | |
+| --- | --- |
+| `GET /api/cron/scrape` | the real run: saves leads, logs to `scrape_runs`, sends the digest |
+| `GET /api/cron/scrape?dry=1` | fetch, dedupe against saved leads, score; returns what *would* be saved |
+| `npm run scrape:audit` | local, no server or DB: per-source health and service mix (`-- --items` for every item) |
+| `npm test` | offline regression suite against `src/lib/scraper/test/fixtures/` |
+
+Both routes need `Authorization: Bearer $CRON_SECRET`; `/api/cron/*` is exempt
+from the login wall for that reason.
+
+### Scheduling
+
+`.github/workflows/scrape.yml` calls the route daily at 08:00 IST and can be
+run by hand (Actions → Daily scrape → Run workflow, with an optional dry run).
+It needs two repository secrets: `CRM_URL` (the deployed CRM) and `CRON_SECRET`.
+Any other scheduler works the same way — it is one authenticated GET.
+
+### Environment
+
+| Variable | |
+| --- | --- |
+| `CRON_SECRET` | required; long random string (`openssl rand -hex 32`) |
+| `APP_URL` | the CRM's URL, for the "Open the CRM" link in the digest |
+| `DIGEST_TO` | digest recipient; defaults to `CONFIG.NOTIFICATION_EMAIL` |
+| `DIGEST_MAILBOX` | which connected mailbox sends it; defaults to the first with send access |
+
+The digest needs Google OAuth configured and a mailbox connected in the CRM.
+Until then runs still save leads, and `scrape_runs.digest` records why the
+email was skipped.
 
 ---
 
@@ -116,12 +128,12 @@ support added to `Api.gs` — redeploy it with **Version: New version** first.
   link, and editable contact + notes fields.
 
 Writes are optimistic: the row updates immediately, then reverts with a toast if
-the sheet rejects it.
+the server rejects it.
 
 ### What can be edited
 
-Only these six columns, enforced on both sides (`EDITABLE_FIELDS` here,
-`API_EDITABLE` in `Api.gs`):
+Only these six fields, enforced server-side by `EDITABLE_FIELDS` in
+`src/lib/types.ts`:
 
 | Column | Field |
 | ------ | ----- |
@@ -135,15 +147,14 @@ Only these six columns, enforced on both sides (`EDITABLE_FIELDS` here,
 Everything the scraper produces — Score, Headline, Source URL, Segment, Intent —
 is read-only, so a dashboard bug cannot corrupt it.
 
-Status values match the sheet's own data validation list from
-`applyLeadsFormatting_()`, so a status set here still passes it.
+Status values match the sheet's old data validation list from
+`applyLeadsFormatting_()`, so imported and new leads share one vocabulary.
 
-### Rows that move
+### Lead identity
 
-Updates send both the sheet row number and a content fingerprint (`key`, derived
-from Source URL). `Api.gs` verifies the fingerprint before writing and falls back
-to scanning for it — so if you sort or insert rows in the Sheet directly, an edit
-still lands on the right lead instead of overwriting its new neighbour.
+Each lead is addressed by `key`: its Source URL, or `company|headline` when
+there is none. It is a generated, unique column in Postgres, so the scraper,
+the import and the dashboard can never compute it differently.
 
 ---
 
@@ -161,24 +172,28 @@ src/
     lead-filters.tsx      search, priority tabs, dropdowns
     stat-cards.tsx        summary tiles
     badges.tsx            priority / status / segment styling
-    setup-notice.tsx      shown when the sheet isn't connected
+    setup-notice.tsx      shown when Supabase isn't configured
   lib/
-    sheets.ts             server-only client for the Apps Script web app
+    leads.ts              server-only reads and writes on public.leads
     types.ts              Lead shape, statuses, priority thresholds
     format.ts             hydration-safe date and URL helpers
+    scraper/              the daily scrape (config, keywords, sources, scoring, digest)
+scripts/
+  import-sheet.mjs        copies leads from the Google Sheet into Supabase
+  scrape-audit.ts         npm run scrape:audit
+supabase/migrations/      schema; run in order
 ```
 
-`src/lib/types.ts` is the contract with the sheet. If you add a column in
-`Code.gs`, update `LEAD_HEADERS` there, `API_FIELDS` in `Api.gs`, and `Lead`
-here.
+To expose another column, add it to the migration, to `LeadRow` / `COLUMNS` /
+`toLead()` in `src/lib/leads.ts`, and to `Lead` in `src/lib/types.ts`.
 
 ---
 
 ## Caching
 
-The lead list is fetched with a 60-second ISR window tagged `leads`. The Refresh
-button bypasses it (`/api/leads?fresh=1`), and a successful write expires the tag
-so a reload shows the change immediately.
+None. The page and `/api/leads` query Postgres on every request, which is fast
+enough that the old 60-second ISR window is gone, and a write is visible on the
+next read.
 
 ## Scripts
 
@@ -186,5 +201,8 @@ so a reload shows the change immediately.
 npm run dev     # dev server
 npm run build   # production build
 npm run lint    # eslint
+npm run import:sheet  # copy new leads from the Google Sheet
+npm run scrape:audit  # check every scraper source, writes nothing
+npm test              # scraper regression suite
 npx tsc --noEmit
 ```

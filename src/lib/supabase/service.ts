@@ -7,8 +7,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  *
  * There is deliberately no browser client and no anon client: the mailbox table
  * has RLS on with zero policies, so `anon` and `authenticated` can read nothing
- * at all. Everything goes through here, server-side, exactly like the Apps
- * Script token in `sheets.ts` never leaves the server process.
+ * at all. Everything goes through here, server-side, so the key never leaves
+ * the server process.
  */
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -203,9 +203,8 @@ export function Dashboard({
   }, []);
 
   /**
-   * Optimistic write: the row changes immediately, then reverts if the sheet
-   * rejects it. Anything else feels broken, because the Apps Script round-trip
-   * is 1-2 seconds.
+   * Optimistic write: the row changes immediately, then reverts if the server
+   * rejects it, so a save never feels like it is waiting on the network.
    */
   const saveLead = useCallback(
     async (lead: Lead, updates: LeadUpdates) => {
@@ -220,7 +219,7 @@ export function Dashboard({
         const res = await fetch("/api/leads", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ row: lead.row, key: lead.key, updates }),
+          body: JSON.stringify({ key: lead.key, updates }),
         });
 
         const body = (await res.json()) as {
@@ -234,18 +233,17 @@ export function Dashboard({
 
         const result = body.results?.[0];
         if (!result?.ok) {
-          throw new Error(result?.error ?? "The sheet rejected this update.");
+          throw new Error(result?.error ?? "The server rejected this update.");
         }
 
-        // Adopt the server's version of the row — it carries the authoritative
-        // row number if the lead had moved in the sheet.
+        // Adopt the server's version of the lead, which is what is now stored.
         if (result.lead) {
           setLeads((prev) =>
             prev.map((l) => (l.key === lead.key ? { ...l, ...result.lead } : l)),
           );
         }
 
-        toast.success(`Saved ${lead.company || "lead"} to the sheet`);
+        toast.success(`Saved ${lead.company || "lead"}`);
       } catch (err) {
         setLeads((prev) => prev.map((l) => (l.key === lead.key ? snapshot : l)));
         toast.error("Could not save", {
@@ -272,7 +270,7 @@ export function Dashboard({
   const refresh = useCallback(() => {
     startRefresh(async () => {
       try {
-        const res = await fetch("/api/leads?fresh=1", { cache: "no-store" });
+        const res = await fetch("/api/leads", { cache: "no-store" });
         const body = (await res.json()) as LeadsResponse & { error?: string };
         if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
 

@@ -5,6 +5,9 @@ import { SESSION_COOKIE, isValidSession } from "@/lib/auth/session";
 /** The only route an anonymous visitor may reach. */
 const LOGIN_PATH = "/login";
 
+/** Scheduler endpoints. They check their own bearer secret, not a session. */
+const CRON_PREFIX = "/api/cron/";
+
 /**
  * The shared-password wall. Everything except the login screen itself requires
  * a valid session cookie.
@@ -14,6 +17,8 @@ const LOGIN_PATH = "/login";
  */
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  if (pathname.startsWith(CRON_PREFIX)) return NextResponse.next();
+
   const signedIn = isValidSession(request.cookies.get(SESSION_COOKIE)?.value);
 
   if (signedIn) {

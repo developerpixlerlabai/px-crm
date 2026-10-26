@@ -1,0 +1,163 @@
+import "server-only";
+
+import { createServiceClient } from "@/lib/supabase/service";
+import type { EditableField, Lead, LeadUpdates, LeadsResponse } from "@/lib/types";
+
+/**
+ * Leads in Supabase (supabase/migrations/0003_leads.sql). Replaces the Apps
+ * Script web app the dashboard used to proxy; the route handlers and the page
+ * call this, and the service key never leaves the server process.
+ */
+
+export class LeadsError extends Error {
+  status: number;
+  constructor(message: string, status = 500) {
+    super(message);
+    this.name = "LeadsError";
+    this.status = status;
+  }
+}
+
+/** Database row, as PostgREST returns it. */
+type LeadRow = {
+  key: string;
+  date_found: string | null;
+  priority: string;
+  score: number;
+  company: string;
+  contact_name: string;
+  title_role: string;
+  email: string;
+  signal_source: string;
+  matched_signals: string;
+  headline: string;
+  snippet: string;
+  source_url: string;
+  status: string;
+  notes: string;
+  outreach_sent: string;
+  segment: string;
+  intent: string;
+  domain: string;
+};
+
+const COLUMNS =
+  "key, date_found, priority, score, company, contact_name, title_role, email, " +
+  "signal_source, matched_signals, headline, snippet, source_url, status, notes, " +
+  "outreach_sent, segment, intent, domain";
+
+const EDITABLE_COLUMNS: Record<EditableField, keyof LeadRow> = {
+  contactName: "contact_name",
+  titleRole: "title_role",
+  email: "email",
+  status: "status",
+  notes: "notes",
+  outreachSent: "outreach_sent",
+};
+
+function toLead(row: LeadRow): Lead {
+  return {
+    key: row.key,
+    dateFound: row.date_found ?? "",
+    priority: row.priority,
+    score: row.score,
+    company: row.company,
+    contactName: row.contact_name,
+    titleRole: row.title_role,
+    email: row.email,
+    signalSource: row.signal_source,
+    matchedSignals: row.matched_signals,
+    headline: row.headline,
+    snippet: row.snippet,
+    sourceUrl: row.source_url,
+    status: row.status,
+    notes: row.notes,
+    outreachSent: row.outreach_sent,
+    segment: row.segment,
+    intent: row.intent,
+    domain: row.domain,
+  };
+}
+
+/**
+ * Pulls every lead, newest first. The dashboard filters client-side, so this
+ * returns the lot; a few thousand rows is well within one response.
+ */
+export async function fetchLeads(): Promise<LeadsResponse> {
+  const supabase = createServiceClient();
+
+  // PostgREST caps a response at the project's max-rows (1000 by default), so
+  // page through rather than silently dropping the oldest leads.
+  const PAGE = 1000;
+  const rows: LeadRow[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select(COLUMNS)
+      .order("seq", { ascending: false })
+      .range(from, from + PAGE - 1)
+      .returns<LeadRow[]>();
+
+    if (error) {
+      throw new LeadsError(`Could not load leads: ${error.message}`, 502);
+    }
+    rows.push(...data);
+    if (data.length < PAGE) break;
+  }
+
+  return {
+    leads: rows.map(toLead),
+    meta: {
+      total: rows.length,
+      returned: rows.length,
+      fetchedAt: new Date().toISOString(),
+    },
+  };
+}
+
+export type UpdateResult = {
+  ok: boolean;
+  results: Array<{ key: string; ok: boolean; error?: string; lead?: Lead }>;
+  updated: number;
+  failed: number;
+};
+
+/**
+ * Applies partial updates, one statement per lead. Each item succeeds or fails
+ * on its own, so a bulk save reports exactly which leads did not land.
+ */
+export async function updateLeads(
+  items: Array<{ key: string; updates: LeadUpdates }>,
+): Promise<UpdateResult> {
+  const supabase = createServiceClient();
+
+  const results = await Promise.all(
+    items.map(async ({ key, updates }) => {
+      const patch: Partial<LeadRow> = {};
+      for (const [field, value] of Object.entries(updates)) {
+        const column = EDITABLE_COLUMNS[field as EditableField];
+        if (column) patch[column] = value as never;
+      }
+
+      if (!Object.keys(patch).length) {
+        return { key, ok: false, error: "No editable fields in this update." };
+      }
+
+      const { data, error } = await supabase
+        .from("leads")
+        .update(patch)
+        .eq("key", key)
+        .select(COLUMNS)
+        .returns<LeadRow[]>();
+
+      if (error) return { key, ok: false, error: error.message };
+      if (!data.length) {
+        return { key, ok: false, error: "Lead not found — it may have been deleted." };
+      }
+      return { key, ok: true, lead: toLead(data[0]) };
+    }),
+  );
+
+  const failed = results.filter((r) => !r.ok).length;
+  return { ok: failed === 0, results, updated: results.length - failed, failed };
+}

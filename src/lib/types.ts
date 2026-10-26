@@ -1,12 +1,9 @@
 /**
- * Mirrors the Leads sheet written by Code.gs (columns A–R) and serialised by
- * Api.gs. Field names match the JSON keys in Api.gs's API_FIELDS map — if you
- * add a column there, add it here too.
+ * One row of public.leads (supabase/migrations/0003_leads.sql), camel-cased by
+ * toLead() in lib/leads.ts. If you expose another column, add it in both places.
  */
 export type Lead = {
-  /** 1-based sheet row. Sent back on update so the server can find the row fast. */
-  row: number;
-  /** Content fingerprint, used to re-find the row if the sheet was reordered. */
+  /** Dedup fingerprint (source URL, else company|headline). Unique; identifies the lead. */
   key: string;
 
   dateFound: string;
@@ -29,7 +26,10 @@ export type Lead = {
   domain: string;
 };
 
-/** The subset of fields Api.gs will accept a write for. */
+/**
+ * The only fields the dashboard may write. Everything else comes from the
+ * scraper, so a dashboard bug cannot corrupt Score, Headline or Source URL.
+ */
 export const EDITABLE_FIELDS = [
   "contactName",
   "titleRole",
@@ -52,9 +52,8 @@ export type LeadsResponse = {
 };
 
 /**
- * The Status dropdown values from applyLeadsFormatting_() in Code.gs. Keeping
- * these identical means a status set here still passes the sheet's own data
- * validation.
+ * The Status dropdown values from applyLeadsFormatting_() in Code.gs, kept
+ * identical so imported leads and new ones share one vocabulary.
  */
 export const STATUSES = [
   "New",

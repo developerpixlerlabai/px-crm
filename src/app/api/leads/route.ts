@@ -1,41 +1,38 @@
-import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
-import { SheetsError, fetchLeads, updateLeads } from "@/lib/sheets";
+import { LeadsError, fetchLeads, updateLeads } from "@/lib/leads";
+import { SupabaseConfigError } from "@/lib/supabase/service";
 import { EDITABLE_FIELDS, type EditableField, type LeadUpdates } from "@/lib/types";
 
 /**
  * The dashboard's own API. The browser talks to this; only the server talks to
- * Apps Script, so SHEETS_API_TOKEN never ships to the client.
+ * Supabase, so the service key never ships to the client.
  */
 
 function errorResponse(err: unknown) {
-  if (err instanceof SheetsError) {
+  if (err instanceof LeadsError || err instanceof SupabaseConfigError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
   console.error("[api/leads]", err);
   return NextResponse.json(
-    { error: "Unexpected error talking to Google Sheets." },
+    { error: "Unexpected error loading leads." },
     { status: 500 },
   );
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    // ?fresh=1 skips the ISR window — used by the Refresh button.
-    const fresh = new URL(request.url).searchParams.get("fresh") === "1";
-    const data = await fetchLeads(fresh ? 0 : 60);
-    return NextResponse.json(data);
+    return NextResponse.json(await fetchLeads());
   } catch (err) {
     return errorResponse(err);
   }
 }
 
-type PatchItem = { row: number; key: string; updates: LeadUpdates };
+type PatchItem = { key: string; updates: LeadUpdates };
 
 /**
- * Accepts either a single { row, key, updates } or { items: [...] } so the UI
- * can save one field inline or a whole detail panel in one round-trip.
+ * Accepts either a single { key, updates } or { items: [...] } so the UI can
+ * save one field inline or a whole detail panel in one round-trip.
  */
 export async function PATCH(request: Request) {
   try {
@@ -47,7 +44,6 @@ export async function PATCH(request: Request) {
 
     const items = raw
       .map((item) => ({
-        row: Number(item?.row) || 0,
         key: String(item?.key ?? ""),
         updates: sanitize(item?.updates),
       }))
@@ -61,18 +57,13 @@ export async function PATCH(request: Request) {
     }
 
     const result = await updateLeads(items);
-
-    // The list is cached with tag "leads"; expire it immediately so the next
-    // page load shows the write instead of a stale row for up to a minute.
-    revalidateTag("leads", { expire: 0 });
-
     return NextResponse.json(result, { status: result.ok ? 200 : 207 });
   } catch (err) {
     return errorResponse(err);
   }
 }
 
-/** Drops anything not on Api.gs's editable whitelist and coerces to string. */
+/** Drops anything not on the editable whitelist and coerces to string. */
 function sanitize(updates: unknown): LeadUpdates {
   if (!updates || typeof updates !== "object") return {};
 

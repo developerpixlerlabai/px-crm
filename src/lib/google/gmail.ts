@@ -3,7 +3,7 @@ import "server-only";
 import type { GmailLabel } from "@/lib/google/types";
 
 /**
- * Gmail REST, same plain-`fetch` idiom as `oauth.ts` and `sheets.ts`.
+ * Gmail REST, same plain-`fetch` idiom as `oauth.ts`.
  *
  * Every function takes an access token rather than a mailbox id: minting the
  * token is `accessTokenForMailbox()`'s job, and keeping that seam separate is
@@ -208,6 +208,11 @@ export type SendOptions = {
   to: string;
   subject: string;
   body: string;
+  /**
+   * Optional HTML alternative to `body`. When set, the message goes out as
+   * multipart/alternative and `body` becomes the plain-text part.
+   */
+  html?: string;
   /** Set for a reply, so Gmail files it into the existing thread. */
   threadId?: string;
   /** The Message-ID header of the message being replied to. */
@@ -238,7 +243,6 @@ export async function sendMessage(
     `To: ${options.to}`,
     `Subject: ${encodeHeader(options.subject)}`,
     "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
   ];
 
   if (options.inReplyTo) {
@@ -246,7 +250,24 @@ export async function sendMessage(
     headers.push(`References: ${options.inReplyTo}`);
   }
 
-  const mime = `${headers.join("\r\n")}\r\n\r\n${options.body}`;
+  let content: string;
+  if (options.html) {
+    const boundary = `alt_${crypto.randomUUID()}`;
+    headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+    content = [
+      `--${boundary}`,
+      mimePart("text/plain", options.body),
+      `--${boundary}`,
+      mimePart("text/html", options.html),
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+  } else {
+    headers.push('Content-Type: text/plain; charset="UTF-8"');
+    content = options.body;
+  }
+
+  const mime = `${headers.join("\r\n")}\r\n\r\n${content}`;
 
   return call(accessToken, "/messages/send", {
     method: "POST",
@@ -256,6 +277,21 @@ export async function sendMessage(
       ...(options.labelIds?.length ? { labelIds: [...options.labelIds] } : {}),
     }),
   });
+}
+
+/**
+ * One base64 part of a multipart message. Base64 rather than raw 8-bit because
+ * an HTML email easily has lines past SMTP's 998-character limit, which relays
+ * are allowed to break.
+ */
+function mimePart(type: string, text: string): string {
+  const encoded = Buffer.from(text, "utf-8").toString("base64").replace(/.{76}/g, "$&\r\n");
+  return [
+    `Content-Type: ${type}; charset="UTF-8"`,
+    "Content-Transfer-Encoding: base64",
+    "",
+    encoded,
+  ].join("\r\n");
 }
 
 /**

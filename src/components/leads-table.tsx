@@ -116,7 +116,7 @@ export function LeadsTable({
 
           {leads.map((lead) => (
             <LeadRow
-              key={lead.key || `${lead.row}`}
+              key={lead.key}
               lead={lead}
               pending={pendingKeys.has(lead.key)}
               onSelect={onSelect}

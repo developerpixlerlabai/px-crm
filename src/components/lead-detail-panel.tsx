@@ -181,7 +181,6 @@ function LeadForm({
             <Meta label="Signal source" value={lead.signalSource} />
             <Meta label="Intent" value={lead.intent} />
             <Meta label="Score" value={String(lead.score)} />
-            <Meta label="Sheet row" value={String(lead.row)} />
           </dl>
 
           {lead.sourceUrl && (
@@ -309,7 +308,7 @@ function LeadForm({
         </Button>
         <Button onClick={handleSave} disabled={!hasChanges || saving}>
           {saving && <Loader2 className="size-4 animate-spin" />}
-          {hasChanges ? "Save to sheet" : "Saved"}
+          {hasChanges ? "Save" : "Saved"}
         </Button>
       </SheetFooter>
     </>

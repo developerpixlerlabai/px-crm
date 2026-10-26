@@ -9,7 +9,7 @@ import {
 /**
  * Google OAuth over plain `fetch`, no `googleapis` package.
  *
- * Same reasoning as `sheets.ts`: one `fetch` idiom across the codebase, and
+ * One `fetch` idiom across the codebase, and
  * Next's ISR (`next: { revalidate, tags }`) only applies to the patched global
  * fetch. `googleapis` calls out through gaxios/node-https instead, so caching
  * would silently never take effect — and it costs ~50MB of cold start.
@@ -52,7 +52,7 @@ export class GoogleOAuthError extends Error {
   }
 }
 
-/** Non-throwing readiness check, mirroring `isConfigured()` in `sheets.ts`. */
+/** Non-throwing readiness check, mirroring `isSupabaseConfigured()`. */
 export function isGoogleConfigured(): boolean {
   return Boolean(CLIENT_ID && CLIENT_SECRET && REDIRECT_URI);
 }

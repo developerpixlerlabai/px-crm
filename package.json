@@ -6,13 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "import:sheet": "node --env-file=.env.local scripts/import-sheet.mjs",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'src/lib/scraper/test/*.test.ts'",
+    "scrape:audit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/scrape-audit.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@supabase/supabase-js": "^2.109.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "fast-xml-parser": "^5.11.2",
     "isomorphic-dompurify": "^3.19.0",
     "lucide-react": "^1.30.0",
     "next": "16.3.0",

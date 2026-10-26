@@ -1,8 +1,10 @@
+import { connection } from "next/server";
+
 import { Dashboard } from "@/components/dashboard";
 import { SetupNotice } from "@/components/setup-notice";
 import { listMailboxes } from "@/lib/google/mailboxes";
 import { isGoogleConfigured } from "@/lib/google/oauth";
-import { SheetsError, fetchLeads, isConfigured } from "@/lib/sheets";
+import { LeadsError, fetchLeads } from "@/lib/leads";
 import { isSupabaseConfigured } from "@/lib/supabase/service";
 import type { Mailbox } from "@/lib/google/types";
 import type { LeadsResponse } from "@/lib/types";
@@ -12,19 +14,20 @@ import type { LeadsResponse } from "@/lib/types";
  * client-side loading flash. Everything interactive lives in <Dashboard />.
  */
 export default async function Page() {
-  if (!isConfigured()) return <SetupNotice />;
+  // Leads change on every scrape and every edit, and the env check below must
+  // run against the deployed env, not the build's. Never prerender this page.
+  await connection();
+
+  if (!isSupabaseConfigured()) return <SetupNotice />;
 
   let data: LeadsResponse;
   try {
     data = await fetchLeads();
   } catch (err) {
+    console.error("[page] could not load leads", err);
     return (
       <SetupNotice
-        error={
-          err instanceof SheetsError
-            ? err.message
-            : "Could not reach the Apps Script API."
-        }
+        error={err instanceof LeadsError ? err.message : "Could not reach Supabase."}
       />
     );
   }
@@ -33,18 +36,16 @@ export default async function Page() {
     <Dashboard
       initial={data}
       mailboxes={await loadMailboxes()}
-      gmailConfigured={isGoogleConfigured() && isSupabaseConfigured()}
+      gmailConfigured={isGoogleConfigured()}
     />
   );
 }
 
 /**
- * Mailboxes are a secondary concern on this page: a Supabase outage, or simply
- * not having configured it yet, must not take the leads dashboard down with it.
+ * Mailboxes are a secondary concern on this page: a failure loading them must
+ * not take the leads dashboard down with it.
  */
 async function loadMailboxes(): Promise<Mailbox[]> {
-  if (!isSupabaseConfigured()) return [];
-
   try {
     return await listMailboxes();
   } catch (err) {

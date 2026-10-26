@@ -1,0 +1,51 @@
+# Daily intent scrape. Replaces the Apps Script 8am trigger.
+#
+# Calls the deployed CRM's /api/cron/scrape, which fetches every source, saves
+# new leads to Supabase, logs the run to scrape_runs and sends the digest.
+#
+# Repository secrets (Settings -> Secrets and variables -> Actions):
+#   CRM_URL      the deployed CRM, e.g. https://crm.example.com (no trailing slash)
+#   CRON_SECRET  the same value as CRON_SECRET in the CRM's environment
+
+name: Daily scrape
+
+on:
+  schedule:
+    # 02:30 UTC = 08:00 IST. GitHub may start scheduled runs a few minutes late.
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Fetch and score only; save nothing, send no email"
+        type: boolean
+        default: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run the scrape
+        env:
+          CRM_URL: ${{ secrets.CRM_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DRY: ${{ inputs.dry_run && '?dry=1' || '' }}
+        run: |
+          if [ -z "$CRM_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Set the CRM_URL and CRON_SECRET repository secrets."
+            exit 1
+          fi
+          # --fail-with-body: a 401/500 fails the job AND prints the reason.
+          curl --fail-with-body --silent --show-error --max-time 540 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$CRM_URL/api/cron/scrape$DRY" \
+            | tee result.json
+          echo
+          node -e '
+            const r = require("./result.json");
+            console.log(`fetched ${r.fetched} · qualified ${r.qualified} · saved ${r.saved} · deferred ${r.deferred}`);
+            console.log(`digest: ${r.digest}`);
+            for (const s of r.sources.filter((s) => s.status !== "OK")) {
+              console.log(`::warning::${s.label}: ${s.status} ${s.detail}`);
+            }
+          '

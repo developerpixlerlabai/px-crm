@@ -22,7 +22,7 @@ import { STATUSES, priorityOf, type Lead } from "@/lib/types";
  * Kanban board over the same filtered leads the table shows, with Status as the
  * column axis.
  *
- * Drag-and-drop is the native HTML5 API rather than a library: the sheet has no
+ * Drag-and-drop is the native HTML5 API rather than a library: leads have no
  * ordering column, so cards can only ever move BETWEEN columns — there is no
  * within-column sort to persist, which is the only thing a drag library would
  * really buy here. Native DnD is mouse-only, so every card also carries a
@@ -112,7 +112,7 @@ export function LeadsBoard({
 
               {column.map((lead) => (
                 <BoardCard
-                  key={lead.key || String(lead.row)}
+                  key={lead.key}
                   lead={lead}
                   pending={pendingKeys.has(lead.key)}
                   isDragging={dragging?.key === lead.key}
