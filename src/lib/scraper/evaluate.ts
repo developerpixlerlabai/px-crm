@@ -5,19 +5,23 @@ import {
   COMPETITOR_NAME_RE,
   COMPETITOR_TEXT_RE,
   DISQUALIFY,
+  EARLY_STAGE_RE,
   ENGINEERING_ROLE_RE,
+  INVESTOR_FUND_RE,
   INTENT_GROUPS,
   JOB_FENCED_RE,
   JOB_OPEN_RE,
   JOB_POSTING_INTENT,
   JOB_REMOTE_RE,
   LARGE_COMPANIES,
+  LATE_STAGE_RE,
   LARGE_COMPANY_TEXT_RE,
   LARGE_COMPANY_TITLE_RE,
   NON_ENGINEERING_ROLE_RE,
   NON_US_HARD,
   NON_US_SOFT,
   OUTREACH_ANGLES,
+  PLACE_NAMES,
   PENALTIES,
   PRIORITY_MARKET_CASED_RE,
   PRIORITY_MARKET_RE,
@@ -45,12 +49,23 @@ export function companyKeyOf(name: string): string {
   return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** Matches a company against a list, ignoring a legal or brand suffix. */
-function onCompanyList(name: string, list: string[]): boolean {
+/**
+ * Matches a company against a list, ignoring a legal or brand suffix — and,
+ * with `firstWord`, by its first word too, so "SAP Korea" is SAP and "Wells
+ * Fargo Bank" is Wells Fargo. Places and competitors use the whole name only:
+ * "Terminal" the talent marketplace is not "Terminal Industries".
+ */
+function onCompanyList(name: string, list: string[], firstWord = true): boolean {
   const key = companyKeyOf(name);
   if (!key) return false;
   const stripped = key.replace(/(?:inc|llc|ltd|ab|gmbh|corp|technologies|technology|hq)$/, "");
-  return list.includes(key) || list.includes(stripped);
+  if (list.includes(key) || list.includes(stripped)) return true;
+  if (!firstWord) return false;
+  const words = String(name).trim().split(/\s+/);
+  return (
+    words.length > 1 &&
+    (list.includes(companyKeyOf(words[0])) || list.includes(companyKeyOf(words.slice(0, 2).join(""))))
+  );
 }
 
 /**
@@ -148,13 +163,28 @@ export function evaluate(item: Item, context: EvaluateContext = {}): Verdict | R
   const badBuyer = findKeyword(buyerText, WRONG_BUYER);
   if (badBuyer) return reject("wrong buyer: " + badBuyer.trim());
 
-  // 3b. Jobs: would this company buy from an agency at all? Competitors and
-  //     labelling platforms sell what we sell; big brands staff in-house.
+  // 3b. Would this company buy from an agency at all? Governments buy through
+  //     procurement, big brands staff in-house, and IT-services firms and
+  //     labelling platforms sell what we sell. Applies to news and jobs alike.
+  const company = item.company || extractCompanyName(item.title, item.publisher);
+  if (onCompanyList(company, PLACE_NAMES, false)) {
+    return reject("government or place: " + company);
+  }
+  if (!isJob) {
+    if (onCompanyList(company, COMPETITOR_COMPANIES, false) || COMPETITOR_NAME_RE.test(company)) {
+      return reject("competitor or gig work: " + company);
+    }
+    if (onCompanyList(company, LARGE_COMPANIES)) {
+      return reject("large company: " + company);
+    }
+    if (INVESTOR_FUND_RE.test(text)) return reject("investor fund raise");
+  }
+
   const roleText = item.role || item.title;
   if (isJob) {
     const body = item.title + " " + item.snippet;
     if (
-      onCompanyList(item.company, COMPETITOR_COMPANIES) ||
+      onCompanyList(item.company, COMPETITOR_COMPANIES, false) ||
       COMPETITOR_NAME_RE.test(item.company) ||
       COMPETITOR_TEXT_RE.test(body)
     ) {
@@ -203,7 +233,6 @@ export function evaluate(item: Item, context: EvaluateContext = {}): Verdict | R
   const segment = classifySegment(text, item.segmentHint);
 
   // 7. Outreach-readiness + locality bonuses
-  const company = item.company || extractCompanyName(item.title, item.publisher);
   if (isRealCompany(company)) score += 2;
   if (item.domain) score += 1; // we already have their website
   if (ageDays !== null && ageDays <= 3) score += 1;
@@ -254,6 +283,15 @@ export function evaluate(item: Item, context: EvaluateContext = {}): Verdict | R
         return reject("no stage evidence");
       }
       score = Math.min(score, CONFIG.JOB_MAX_SCORE_WITHOUT_STAGE);
+    }
+  } else if (fired.some((g) => g.key === "Funding")) {
+    // News: the round's stage. Late money means an engineering org already
+    // exists; an early round is exactly the company that buys an MVP.
+    if (LATE_STAGE_RE.test(text)) {
+      score -= CONFIG.NEWS_LATE_STAGE_PENALTY;
+    } else if (EARLY_STAGE_RE.test(text)) {
+      score += CONFIG.NEWS_EARLY_STAGE_BONUS;
+      labels.push("Early-stage");
     }
   }
 

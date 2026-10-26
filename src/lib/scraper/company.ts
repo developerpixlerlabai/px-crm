@@ -47,6 +47,20 @@ const DESCRIPTOR_LEAD_IN = new RegExp(
   "^(?:[\\w&'’.-]+\\s+){0,5}" + DESCRIPTOR_NOUNS + "\\s+(?=[A-Z\\u00C0-\\u00DE])",
 );
 
+// "Valencia-based Linkene", "UAE-Based Fortis", "Y Combinator-backed Fizz".
+// A place or backer phrase in front of the name is never part of it.
+const BASED_LEAD_IN =
+  /^(?:[A-Z][\w.&'’]*(?:[ -][A-Z][\w.&'’]*){0,2})[ -](?:based|backed|headquartered)\s+/i;
+
+// "Egyptian Proptech Aqar", "Portuguese EdTech Intuitivo", "Fintech Zaria
+// Systems": an optional nationality, then a sector word, then the name.
+const SECTOR_LEAD_IN =
+  /^(?:[A-Z][a-z]+\s+)?(?:Ed[Tt]ech|Prop[Tt]ech|Fin[Tt]ech|Health[Tt]ech|Insur[Tt]ech|Legal[Tt]ech|Med[Tt]ech|Agri[Tt]ech|Climate[Tt]ech|Travel[- ][Tt]ech)\s+(?=[A-Z])/;
+
+// Words that trail a name in a headline but are not part of it:
+// "RapidCanvas Series B", "Aqar Exit".
+const TRAILING_NOISE = /\s+(?:Series [A-F]|Exit|Funding|Round|Seed)$/;
+
 const LAUNCHED = new RegExp(LAUNCH_VERBS + "\\s+([^,]{0,70}?)(?=\\s+[Ww]ith\\b|,|$)");
 
 const COMPANY_PATTERNS = [
@@ -80,6 +94,10 @@ export function stripLeadingDescriptor(t: string): string {
       .replace(/^\s*[{[(][^}\])]{0,40}[}\])]\s*/, "")
       // "Bulgaria's Estel Technologies ..." -> "Estel Technologies ..."
       .replace(/^[A-Z][\w.&-]*['’]s\s+(?=[A-Z])/, "")
+      // "Valencia-based Linkene ..." -> "Linkene ..."
+      .replace(BASED_LEAD_IN, "")
+      // "Egyptian Proptech Aqar ..." -> "Aqar ..."
+      .replace(SECTOR_LEAD_IN, "")
       // "Enterprise AI Startup Superleap ..." -> "Superleap ..." Not restricted
       // to Capitalised lead-ins: "Food delivery startup Amigo" is lowercase.
       .replace(DESCRIPTOR_LEAD_IN, "")
@@ -134,7 +152,8 @@ function matchCompanyPatterns(t: string, bare = false): string {
   const patterns = bare ? [...COMPANY_PATTERNS, BARE_NAME] : COMPANY_PATTERNS;
   for (const pattern of patterns) {
     const m = t.match(pattern);
-    if (m && isRealCompany(m[1])) return m[1].trim();
+    const name = m ? m[1].trim().replace(TRAILING_NOISE, "") : "";
+    if (name && isRealCompany(name)) return name;
   }
   return "";
 }

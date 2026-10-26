@@ -260,3 +260,42 @@ test("priority markets: US/UK/UAE/Australia, without matching prose", () => {
     assert.ok(!inMarket(s), s);
   }
 });
+
+// ── News: who buys from an agency ────────────────────────────
+
+test("news from big companies, governments and VC funds is rejected", () => {
+  assert.match(String(evaluate(news("SAP Korea appoints chief AI officer to lead AI strategy")).reason), /^large company/);
+  assert.match(String(evaluate(news("Wells Fargo names head of AI as it invests in AI")).reason), /^large company/);
+  assert.match(String(evaluate(news("Sacramento launches mobile app for city services")).reason), /^government or place/);
+  assert.equal(
+    evaluate(news("Kairon Capital raises Rs 450 crore second fund for early-stage startups")).reason,
+    "investor fund raise",
+  );
+});
+
+test("funding stage: early rounds lifted to Hot, late rounds dropped", () => {
+  const early = evaluate(news("Vectorial raises $3 million in seed funding to expand AI platform"));
+  assert.ok(early.keep && early.score >= 8, JSON.stringify(early));
+  assert.match(early.intents, /Early-stage/);
+
+  for (const late of [
+    "Pathos AI secures $237 million in Series E financing",
+    "Warhound raises $200M at a $1.2B valuation",
+  ]) {
+    assert.ok(!evaluate(news(late)).keep, late);
+  }
+});
+
+test("company names lose place, backer and sector prefixes", () => {
+  const cases: Array<[string, string]> = [
+    ["Valencia-based Linkener raises €7.5 million to digitise energy", "Linkener"],
+    ["Y Combinator-backed Firstwork raises $15 million Series A", "Firstwork"],
+    ["Egyptian Proptech Aqar Exit Secures $200,000 Funding", "Aqar"],
+    ["Saudi Fintech Barq Raises $329.5m Series A", "Barq"],
+    ["RapidCanvas Series B funding: USD 29 million led by Vertex", "RapidCanvas"],
+    ["Pluto Security exits stealth with $42M to secure enterprise AI", "Pluto Security"],
+    ["Berlin’s Cygrid exits stealth with €2.66 million", "Cygrid"],
+  ];
+  for (const [title, want] of cases) assert.equal(extractCompanyName(title, ""), want, title);
+  assert.ok(!isRealCompany(extractCompanyName("SaaS Seed Round Fundraising: Metrics & Pipeline Strategy", "")));
+});

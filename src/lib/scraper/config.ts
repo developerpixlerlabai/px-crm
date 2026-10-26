@@ -74,23 +74,34 @@ export const CONFIG = {
       q: '"seed round" raises startup ("B2B software" OR SaaS OR platform) when:7d' },
     { label: "Exits Stealth",           segment: "saas",   bing: true,
       q: '("exits stealth" OR "emerges from stealth" OR "launches out of stealth") AI when:14d' },
-    { label: "New AI Leadership",       segment: "saas",
+    // OFF 2026-10-26 — 30 of 33 kept, every one a large enterprise (Barclays,
+    // Wells Fargo, Morrisons, ERGO). A corporate Chief AI Officer hire is not an
+    // agency buyer.
+    { label: "New AI Leadership",       segment: "saas", enabled: false,
       q: '("chief AI officer" OR "head of AI" OR "VP of AI" OR "head of automation") appoints OR hires OR names when:14d' },
-    { label: "AI Initiative Announced", segment: "saas",   bing: true,
+    // OFF 2026-10-26 — 10 of 26 kept, all large companies (Zoom, Databricks,
+    // Coupa, SAP Korea, Binance).
+    { label: "AI Initiative Announced", segment: "saas", enabled: false,   bing: true,
       q: '("investing in AI" OR "AI roadmap" OR "AI transformation" OR "AI strategy") company announces when:7d' },
     { label: "AI Agent Funding",        segment: "saas",
       q: 'raises ("AI agents" OR "agentic" OR "AI copilot") million when:7d' },
-    { label: "AI Product Launch B2B",   segment: "saas",
+    // OFF 2026-10-26 — 10 of 53 kept, mostly enterprises (Disney, Tech Mahindra,
+    // Mashreq bank).
+    { label: "AI Product Launch B2B",   segment: "saas", enabled: false,
       q: 'launches "AI-powered" platform (B2B OR SaaS OR enterprise) when:7d' },
 
     // ── Healthcare / MedTech (fewer queries — it was already over-represented) ──
     { label: "Health Tech Funding",     segment: "health",
       q: '("digital health" OR "health tech") raises ("Series A" OR "Series B" OR "seed") when:7d' },
-    { label: "Modernization Partner",   segment: "health",
+    // OFF 2026-10-26 — Government programmes: 2 of 15 kept, both junk ("UK and
+    // Nigerian", "UNDP and").
+    { label: "Modernization Partner",   segment: "health", enabled: false,
       q: '("digital transformation" OR "legacy modernization") (partners OR selects OR taps) health OR clinical when:14d' },
-    { label: "Health AI Deployment",    segment: "health",
+    // OFF 2026-10-26 — 2 of 45 kept, and 2 of 44 on the run before.
+    { label: "Health AI Deployment",    segment: "health", enabled: false,
       q: '(healthcare OR clinical) (deploys OR implements OR partners) AI OR automation when:14d' },
-    { label: "MedTech AI Launch",       segment: "health",
+    // OFF 2026-10-26 — 2 of 35 kept, and 2 of 36 on the run before.
+    { label: "MedTech AI Launch",       segment: "health", enabled: false,
       q: '(medtech OR "medical device") launches OR unveils AI when:14d' },
 
     // ── Phase 1 expansion (spec §7) ──────────────────────────────
@@ -129,7 +140,8 @@ export const CONFIG = {
     // AI
     { label: "AI Startup Funding",      segment: "ai",
       q: '"AI startup" raises funding when:7d' },
-    { label: "AI Adoption",             segment: "ai",
+    // OFF 2026-10-26 — 6 of 55 kept, incl. Spotify and a nearshore dev shop.
+    { label: "AI Adoption",             segment: "ai", enabled: false,
       q: 'company "adopts AI" OR "AI integration" OR "AI implementation" when:14d' },
 
     // Startups / funding
@@ -155,27 +167,33 @@ export const CONFIG = {
       q: '"mobile app" startup raises when:14d' },
 
     // Modernization
-    { label: "Legacy Modernization",    segment: "saas",
+    // OFF 2026-10-26 — 1 of 8 kept (unnamed), and 2 of 26 on the run before.
+    { label: "Legacy Modernization",    segment: "saas", enabled: false,
       q: '"legacy modernization" OR "application modernization" company when:14d' },
-    { label: "Cloud Migration",         segment: "saas",
+    // OFF 2026-10-26 — 2 of 35 kept (an insurer, a telco).
+    { label: "Cloud Migration",         segment: "saas", enabled: false,
       q: '"cloud migration" OR "platform migration" company software when:14d' },
 
     // Fintech
     { label: "Fintech Funding",         segment: "fintech",
       q: 'fintech startup raises funding when:7d' },
-    { label: "Fintech Platform Launch", segment: "fintech",
+    // OFF 2026-10-26 — 5 of 64 kept; Fintech FUNDING covers the segment.
+    { label: "Fintech Platform Launch", segment: "fintech", enabled: false,
       q: 'fintech launches platform OR "payment platform" when:14d' },
 
     // Real estate
     { label: "PropTech Funding",        segment: "real_estate",
       q: 'proptech OR "real estate platform" startup raises funding when:7d' },
-    { label: "PropTech Launch",         segment: "real_estate",
+    // OFF 2026-10-26 — 1 of 8 kept; PropTech FUNDING covers the segment.
+    { label: "PropTech Launch",         segment: "real_estate", enabled: false,
       q: '"property management software" OR "real estate platform" launches when:14d' },
 
     // Logistics
     { label: "Logistics Funding",       segment: "logistics",
       q: 'logistics startup raises funding when:7d' },
-    { label: "Logistics Platform",      segment: "logistics",
+    // OFF 2026-10-26 — 3 of 40 kept, incl. Samsara (public); Logistics FUNDING
+    // covers it.
+    { label: "Logistics Platform",      segment: "logistics", enabled: false,
       q: '"logistics platform" OR "fleet management" software launches when:14d' },
 
     // EdTech
@@ -226,6 +244,12 @@ export const CONFIG = {
   // every job scored 8–10 from "named company + website + recent" alone,
   // which is exactly the profile of a big brand.
   JOB_MAX_SCORE_WITHOUT_STAGE: 7,
+  // News: a funding story's stage decides whether the company still buys from
+  // an agency. Measured 2026-10-26, once the enterprise queries were off, the
+  // funding queries still ranked "Pathos AI $237M Series E" and "Warhound
+  // $200M at a $1.2B valuation" level with seed rounds.
+  NEWS_EARLY_STAGE_BONUS: 1,   // pre-seed / seed / Series A / out of stealth
+  NEWS_LATE_STAGE_PENALTY: 3,  // Series C+, $100M+ rounds, $1B+ valuations: drops below MIN_SCORE
   // ...and on these boards a posting with no stage evidence is dropped
   // outright. Measured 2026-10-26: with only the cap, WWR and Jobicy still
   // filled their slots with Discord, Mozilla, ClickUp, FanDuel, Monzo and
@@ -336,10 +360,12 @@ export const CONFIG = {
   // The four SaaS ones returned ZERO entries — `site:` operators don't work in
   // Google Alerts, and one had "2024 OR 2025" hardcoded into the query.
   // Re-enable any of these only if the audit shows entries > 0.
+  // The two remaining alerts are OFF too (2026-10-26): 0 of 9 items kept,
+  // and 0 qualified on every run since the move off Apps Script.
   LEGACY_ALERT_FEEDS: [
-    { label: "MedTech AI Investment (Alert)", segment: "health", enabled: true,
+    { label: "MedTech AI Investment (Alert)", segment: "health", enabled: false,
       url: "https://www.google.com/alerts/feeds/06603326583628741775/4527756030740921781" },
-    { label: "Healthcare Digital Transformation (Alert)", segment: "health", enabled: true,
+    { label: "Healthcare Digital Transformation (Alert)", segment: "health", enabled: false,
       url: "https://www.google.com/alerts/feeds/06603326583628741775/15417297547233066720" },
 
     // ── Confirmed returning 0 entries — left here for the record ──

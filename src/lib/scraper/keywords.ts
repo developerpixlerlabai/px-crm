@@ -444,7 +444,9 @@ export const NOT_A_COMPANY = [
   "the", "this", "these", "new", "how", "why", "what", "when", "who",
   "top", "best", "first", "global", "us", "u.s.", "ai", "report", "study",
   "exclusive", "breaking", "opinion", "meet", "inside", "here",
-  "hn", "hacker news", "location", "remote", "hiring"
+  "hn", "hacker news", "location", "remote", "hiring",
+  // A topic, not a company: "SaaS Seed Round Fundraising: Metrics…"
+  "saas", "fintech", "edtech", "proptech", "healthtech"
 ];
 
 
@@ -533,7 +535,10 @@ export const ACTION_WORDS = [
   // headlines ("Why Patient Outcomes Must Drive Healthcare AI Strategy") and
   // would turn the preceding words into a company name.
   "emerges", "emerged", "establishes", "established", "emphasizes",
-  "showcases", "advances", "reopens"
+  "showcases", "advances", "reopens",
+  // Added 2026-10-26: "Pluto Security exits stealth with $42M" was unnamed,
+  // and once early rounds earned a point, 29 such stories surfaced nameless.
+  "exits"
 ];
 
 
@@ -625,6 +630,12 @@ export const LARGE_COMPANIES = [
   "netflix", "notion", "okta", "oportun", "planetscale", "reddit", "salesforce",
   "shopify", "slack", "sourcegraph", "spotify", "squarespace", "stripe",
   "supabase", "tether", "twilio", "typeform", "uber", "vercel", "zapier", "zoom",
+  // Seen in news 2026-10-26 once the news side got the same check: banks,
+  // insurers, retailers and enterprise software announcing AI plans.
+  "barclays", "wellsfargo", "jpmorgan", "hsbc", "citi", "mashreq", "ergo",
+  "allianz", "axa", "morrisons", "walmart", "disney", "databricks", "coupa",
+  "sap", "oracle", "ibm", "nvidia", "intel", "cisco", "adobe", "samsung",
+  "samsara", "spotify", "deepseek", "openai", "anthropic", "scg",
 ];
 
 /**
@@ -639,6 +650,11 @@ export const COMPETITOR_COMPANIES = [
   "revelo", "scalablepath", "terminal", "hired", "interviewresources",
   "growthminded", "irashtech", "startuphakk",
   // AI data labelling / "AI trainer" piecework
+  // IT services and consultancies: they sell what we sell
+  "accenture", "avanade", "infosys", "tcs", "tataconsultancyservices", "wipro",
+  "cognizant", "hcl", "hcltech", "capgemini", "deloitte", "pwc", "kpmg", "ey",
+  "techmahindra", "cegeka", "epam", "globant", "endava", "gorillalogic",
+  "thoughtworks", "ltimindtree",
   "imerit", "imerittechnology", "outlier", "dataannotation", "remotasks",
   "appen", "telusinternational", "mercor", "alignerr", "invisibletechnologies",
   "surgeai", "scaleai", "askable",
@@ -679,3 +695,55 @@ export const PRIORITY_MARKET_RE = new RegExp(
   ].join("|") + ")\\b",
   "i",
 );
+
+
+/**
+ * Places and public bodies. A headline like "Sacramento launches 311 app" or
+ * "Arkansas names chief AI officer" yields the place as its "company", and a
+ * government buys through procurement, not from an agency. Matched against
+ * the WHOLE normalized company name only — "New York Times" is not New York.
+ */
+export const PLACE_NAMES = [
+  // US states
+  "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+  "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+  "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine",
+  "maryland", "massachusetts", "michigan", "minnesota", "mississippi",
+  "missouri", "montana", "nebraska", "nevada", "newhampshire", "newjersey",
+  "newmexico", "newyork", "northcarolina", "northdakota", "ohio", "oklahoma",
+  "oregon", "pennsylvania", "rhodeisland", "southcarolina", "southdakota",
+  "tennessee", "texas", "utah", "vermont", "virginia", "washington",
+  "westvirginia", "wisconsin", "wyoming",
+  // Cities that have surfaced, plus the large ones
+  "sacramento", "nyc", "newyorkcity", "losangeles", "chicago", "houston",
+  "phoenix", "philadelphia", "sanantonio", "sandiego", "dallas", "austin",
+  "sanfrancisco", "seattle", "denver", "boston", "atlanta", "miami", "london",
+  "dubai", "abudhabi", "singapore", "sydney", "melbourne", "toronto",
+  // Countries and blocs
+  "us", "usa", "uk", "uae", "india", "china", "japan", "germany", "france",
+  "canada", "australia", "brazil", "nigeria", "kenya", "egypt", "saudiarabia",
+  "qatar", "israel", "ireland", "spain", "italy", "netherlands", "sweden",
+  "eu", "europeanunion", "europeancommission",
+  // Public bodies
+  "undp", "un", "unitednations", "nhs", "worldbank", "who",
+];
+
+
+// ── NEWS: FUNDING STAGE ──────────────────────────────────────
+// Read only when the Funding group fired, so "seed" here is already anchored
+// to a round, not to "seeded 40 new stores".
+
+/** Early rounds: the company is at the stage that buys an MVP or a pilot. */
+export const EARLY_STAGE_RE =
+  /\b(?:pre-?seed|seed|series a|angel round|(?:emerges?|emerging|exits?|out) (?:from |of )?stealth)\b/i;
+
+/**
+ * Late rounds and big money: an engineering organisation already exists.
+ * $100M+ in dollars, euros or pounds; any billion-scale figure or valuation.
+ */
+export const LATE_STAGE_RE =
+  /\bseries [c-h]\b|[$€£]\s?\d{3,}(?:[.,]\d+)?\s?(?:m|mn|million)\b|[$€£]\s?\d+(?:\.\d+)?\s?(?:b|bn|billion)\b|\bunicorn\b|\bipo\b/i;
+
+/** A venture fund raising its own fund: an investor, never a buyer. */
+export const INVESTOR_FUND_RE =
+  /\b(?:second|third|fourth|fifth|new|debut|maiden|venture|growth) fund\b|\bfund (?:i{1,3}|iv|v|vi|[2-9])\b|\bcloses? (?:its )?(?:\w+ )?fund\b/i;
