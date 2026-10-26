@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import {
   SESSION_COOKIE,
   SESSION_COOKIE_OPTIONS,
+  isLoginConfigured,
   isValidLogin,
   sessionToken,
 } from "@/lib/auth/session";
@@ -25,6 +26,12 @@ export async function login(
 
   if (!username || !password) {
     return { error: "Enter both a username and a password." };
+  }
+
+  // Said plainly rather than as "wrong credentials", or a deploy missing its
+  // env vars looks exactly like a forgotten password.
+  if (!isLoginConfigured()) {
+    return { error: "Sign-in is not set up: CRM_USERNAME and CRM_PASSWORD are missing on the server." };
   }
 
   if (!isValidLogin(username, password)) {

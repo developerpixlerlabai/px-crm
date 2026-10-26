@@ -21,18 +21,22 @@ export const SESSION_COOKIE_OPTIONS = {
   path: "/",
 };
 
-const DEFAULT_USERNAME = "admin";
-const DEFAULT_PASSWORD = "pixlerlab";
-
 /**
  * Read at call time rather than at module load, so editing `.env.local` takes
  * effect on the next request instead of needing a server restart.
+ *
+ * There are deliberately no fallback values. The repo is public, so a default
+ * password in the source is a password anyone can read; with either variable
+ * unset, every login and every session is refused instead.
  */
-function credentials() {
-  return {
-    username: process.env.CRM_USERNAME || DEFAULT_USERNAME,
-    password: process.env.CRM_PASSWORD || DEFAULT_PASSWORD,
-  };
+function credentials(): { username: string; password: string } | null {
+  const username = process.env.CRM_USERNAME?.trim();
+  const password = process.env.CRM_PASSWORD?.trim();
+  return username && password ? { username, password } : null;
+}
+
+export function isLoginConfigured(): boolean {
+  return credentials() !== null;
 }
 
 /**
@@ -42,17 +46,21 @@ function credentials() {
  * every cookie already out there.
  */
 export function sessionToken(): string {
-  const { username, password } = credentials();
+  const configured = credentials();
+  if (!configured) throw new Error("CRM_USERNAME and CRM_PASSWORD are not set.");
+  const { username, password } = configured;
   const key = process.env.CRM_AUTH_SECRET || `${username}:${password}`;
   return createHmac("sha256", key).update("crm-session-v1").digest("hex");
 }
 
 export function isValidSession(token: string | undefined): boolean {
+  if (!isLoginConfigured()) return false;
   return typeof token === "string" && equals(token, sessionToken());
 }
 
 export function isValidLogin(username: string, password: string): boolean {
   const expected = credentials();
+  if (!expected) return false;
   // Both halves are always compared, so a wrong username costs the same time as
   // a wrong password and the response reveals nothing about which was wrong.
   const user = equals(username, expected.username);

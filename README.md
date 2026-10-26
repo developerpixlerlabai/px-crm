@@ -42,6 +42,11 @@ cp .env.example .env.local   # already done if .env.local exists
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_...
+
+# The shared login. There are no defaults: unset means nobody can sign in.
+CRM_USERNAME=...
+CRM_PASSWORD=...
+CRM_AUTH_SECRET=...   # optional; openssl rand -hex 32. Signs sessions.
 ```
 
 ```bash
