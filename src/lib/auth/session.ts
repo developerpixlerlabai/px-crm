@@ -42,14 +42,21 @@ export function isLoginConfigured(): boolean {
 /**
  * The cookie carries no session id — there is no session store to look one up
  * in. It carries an HMAC that only this server can produce, and the key is
- * derived from the password, so changing the password silently invalidates
- * every cookie already out there.
+ * derived from the username and password, so changing either one silently
+ * invalidates every cookie already out there.
+ *
+ * `CRM_AUTH_SECRET`, when set, is mixed in alongside the credentials rather
+ * than replacing them. Rotating it logs everyone out too, but it can never stop
+ * a password change from doing so.
  */
 export function sessionToken(): string {
   const configured = credentials();
   if (!configured) throw new Error("CRM_USERNAME and CRM_PASSWORD are not set.");
   const { username, password } = configured;
-  const key = process.env.CRM_AUTH_SECRET || `${username}:${password}`;
+  const secret = process.env.CRM_AUTH_SECRET ?? "";
+  // JSON-encoding keeps the parts unambiguous: no username/password split can
+  // collide with another just because one of them contains the separator.
+  const key = JSON.stringify([secret, username, password]);
   return createHmac("sha256", key).update("crm-session-v1").digest("hex");
 }
 
